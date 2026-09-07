@@ -57,7 +57,7 @@ async function connectToWhatsApp() {
         const from = m.key.remoteJid;
         const messageType = Object.keys(m.message)[0];
 
-        // Obtener el texto del mensaje (puede venir en texto plano o dentro de un archivo multimedia como leyenda)
+        // Obtener el texto del mensaje
         let body = '';
         if (messageType === 'conversation') {
             body = m.message.conversation;
@@ -82,19 +82,18 @@ async function connectToWhatsApp() {
 
         // Comando de Stickers (#s o #sticker)
         if (command === 's' || command === 'sticker') {
-            // Verificar si el mensaje actual contiene una imagen/video o si está citando un mensaje con multimedia
             const quotedMessage = m.message.extendedTextMessage?.contextInfo?.quotedMessage;
             const isMedia = messageType === 'imageMessage' || messageType === 'videoMessage';
             const isQuotedMedia = quotedMessage && (quotedMessage.imageMessage || quotedMessage.videoMessage);
 
+            // Validación clara para evitar errores si no hay imagen adjunta
             if (!isMedia && !isQuotedMedia) {
-                return await sock.sendMessage(from, { text: '⚠️ Envía una imagen o video con el comando #s, o responde a una imagen con #s.' }, { quoted: m });
+                return await sock.sendMessage(from, { text: '⚠️ Por favor, adjunta una imagen con el texto #s o responde a una foto con #s para crear el sticker.' }, { quoted: m });
             }
 
             try {
                 await sock.sendMessage(from, { text: '⏳ Creando sticker...' }, { quoted: m });
 
-                // Descargar el archivo multimedia del mensaje
                 const mediaMsg = isMedia ? m : { message: quotedMessage };
                 const buffer = await downloadMediaMessage(
                     mediaMsg,
@@ -103,10 +102,9 @@ async function connectToWhatsApp() {
                     { logger: pino({ level: 'silent' }) }
                 );
 
-                // Crear el sticker con la librería
                 const sticker = new Sticker(buffer, {
-                    pack: 'Cocobot (Prem-Bot)', // Nombre del pack
-                    author: 'LightningNeko',      // Autor por defecto
+                    pack: 'Cocobot (Prem-Bot)',
+                    author: 'LightningNeko',
                     type: StickerTypes.FULL,
                     categories: ['🤩', '🎉'],
                     id: '12345',
@@ -114,8 +112,6 @@ async function connectToWhatsApp() {
                 });
 
                 const stickerBuffer = await sticker.toBuffer();
-
-                // Enviar el sticker resultante al chat
                 await sock.sendMessage(from, { sticker: stickerBuffer }, { quoted: m });
 
             } catch (error) {
