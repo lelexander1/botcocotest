@@ -1,0 +1,16 @@
+{
+  "name": "whatsapp-bot-cocobot",
+  "version": "1.0.0",
+  "description": "Bot de WhatsApp multifuncional",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@whiskeysockets/baileys": "^6.7.12",
+    "pino": "^9.0.0"
+  },
+  "engines": {
+    "node": ">=18.x"
+  }
+}
