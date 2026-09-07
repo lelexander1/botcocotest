@@ -1,7 +1,6 @@
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
 const pino = require('pino');
 const http = require('http');
-const qrcode = require('qrcode-terminal'); // Generará el QR visualmente en consola
 
 // Servidor HTTP para Render y UptimeRobot
 const PORT = process.env.PORT || 3000;
@@ -18,15 +17,27 @@ async function connectToWhatsApp() {
         auth: state
     });
 
-    sock.ev.on('connection.update', (update) => {
-        const { connection, lastDisconnect, qr } = update;
-        
-        // Capturamos el QR y lo dibujamos en la consola de Render de forma limpia
-        if (qr) {
-            console.log('\n--- ESCANEA ESTE CÓDIGO QR ---');
-            qrcode.generate(qr, { small: true });
+    if (!sock.authState.creds.registered) {
+        const phoneNumber = process.env.PHONE_NUMBER;
+        if (!phoneNumber) {
+            console.log('⚠️ Falta configurar la variable PHONE_NUMBER en Render.');
+            return;
         }
 
+        setTimeout(async () => {
+            try {
+                let code = await sock.requestPairingCode(phoneNumber.trim());
+                console.log(`\n========================================`);
+                console.log(`🔗 TU CÓDIGO DE VINCULACIÓN ES: ${code}`);
+                console.log(`========================================\n`);
+            } catch (error) {
+                console.error('Error al generar el código:', error);
+            }
+        }, 5000);
+    }
+
+    sock.ev.on('connection.update', (update) => {
+        const { connection, lastDisconnect } = update;
         if (connection === 'close') {
             const shouldReconnect = (lastDisconnect?.error)?.output?.statusCode !== DisconnectReason.loggedOut;
             if (shouldReconnect) connectToWhatsApp();
