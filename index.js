@@ -1,6 +1,7 @@
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
 const pino = require('pino');
 const http = require('http');
+const qrcode = require('qrcode-terminal'); // Generará el QR visualmente en consola
 
 // Servidor HTTP para Render y UptimeRobot
 const PORT = process.env.PORT || 3000;
@@ -14,23 +15,23 @@ async function connectToWhatsApp() {
 
     const sock = makeWASocket({
         logger: pino({ level: 'silent' }),
-        printQRInTerminal: true, // Activamos para que dibuje el QR en los logs
         auth: state
     });
 
     sock.ev.on('connection.update', (update) => {
         const { connection, lastDisconnect, qr } = update;
         
-        // Si Baileys genera un código QR, se mostrará en texto ASCII en los registros de Render
+        // Capturamos el QR y lo dibujamos en la consola de Render de forma limpia
         if (qr) {
-            console.log('--- ESCANEA ESTE CÓDIGO QR CON TU WHATSAPP ---');
+            console.log('\n--- ESCANEA ESTE CÓDIGO QR ---');
+            qrcode.generate(qr, { small: true });
         }
 
         if (connection === 'close') {
             const shouldReconnect = (lastDisconnect?.error)?.output?.statusCode !== DisconnectReason.loggedOut;
             if (shouldReconnect) connectToWhatsApp();
         } else if (connection === 'open') {
-            console.log('¡Conectado a WhatsApp exitosamente mediante QR!');
+            console.log('¡Conectado a WhatsApp exitosamente!');
         }
     });
 
