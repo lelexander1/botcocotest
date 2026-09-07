@@ -100,15 +100,15 @@ async function connectToWhatsApp() {
                     { logger: pino({ level: 'silent' }) }
                 );
 
-                // Configuración simplificada y compatible sin StickerTypes
                 const sticker = new Sticker(buffer, {
                     pack: 'Cocobot (Prem-Bot)',
                     author: 'LightningNeko',
-                    type: 'full', // Se pasa como cadena de texto plano
+                    type: 'full',
                     quality: 50
                 });
 
-                const stickerBuffer = await sticker.toBuffer();
+                // Se utiliza .build() en lugar de .toBuffer()
+                const stickerBuffer = await sticker.build();
                 await sock.sendMessage(from, { sticker: stickerBuffer }, { quoted: m });
 
             } catch (error) {
