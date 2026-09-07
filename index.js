@@ -1,7 +1,7 @@
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, downloadMediaMessage } = require('@whiskeysockets/baileys');
 const pino = require('pino');
 const http = require('http');
-const { Sticker, StickerTypes } = require('wa-sticker-formatter');
+const { Sticker } = require('wa-sticker-formatter');
 
 // Servidor HTTP para Render y UptimeRobot
 const PORT = process.env.PORT || 3000;
@@ -57,7 +57,6 @@ async function connectToWhatsApp() {
         const from = m.key.remoteJid;
         const messageType = Object.keys(m.message)[0];
 
-        // Obtener el texto del mensaje
         let body = '';
         if (messageType === 'conversation') {
             body = m.message.conversation;
@@ -86,7 +85,6 @@ async function connectToWhatsApp() {
             const isMedia = messageType === 'imageMessage' || messageType === 'videoMessage';
             const isQuotedMedia = quotedMessage && (quotedMessage.imageMessage || quotedMessage.videoMessage);
 
-            // Validación clara para evitar errores si no hay imagen adjunta
             if (!isMedia && !isQuotedMedia) {
                 return await sock.sendMessage(from, { text: '⚠️ Por favor, adjunta una imagen con el texto #s o responde a una foto con #s para crear el sticker.' }, { quoted: m });
             }
@@ -102,13 +100,12 @@ async function connectToWhatsApp() {
                     { logger: pino({ level: 'silent' }) }
                 );
 
+                // Configuración simplificada y compatible sin StickerTypes
                 const sticker = new Sticker(buffer, {
                     pack: 'Cocobot (Prem-Bot)',
                     author: 'LightningNeko',
-                    type: StickerTypes.FULL,
-                    categories: ['🤩', '🎉'],
-                    id: '12345',
-                    quality: 50,
+                    type: 'full', // Se pasa como cadena de texto plano
+                    quality: 50
                 });
 
                 const stickerBuffer = await sticker.toBuffer();
