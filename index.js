@@ -14,37 +14,23 @@ async function connectToWhatsApp() {
 
     const sock = makeWASocket({
         logger: pino({ level: 'silent' }),
-        printQRInTerminal: false,
+        printQRInTerminal: true, // Activamos para que dibuje el QR en los logs
         auth: state
     });
 
-    if (!sock.authState.creds.registered) {
-        // Toma el número directamente de las variables de entorno de Render
-        const phoneNumber = process.env.PHONE_NUMBER; 
-        if (!phoneNumber) {
-            console.log('¡Error! Debes configurar la variable de entorno PHONE_NUMBER en Render con tu número (ej: 51912345678).');
-            return;
-        }
-        
-        setTimeout(async () => {
-            try {
-                let code = await sock.requestPairingCode(phoneNumber.trim());
-                console.log(`\n========================================`);
-                console.log(`TU CÓDIGO DE VINCULACIÓN ES: ${code}`);
-                console.log(`========================================\n`);
-            } catch (error) {
-                console.error('Error al solicitar el código de emparejamiento:', error);
-            }
-        }, 4000);
-    }
-
     sock.ev.on('connection.update', (update) => {
-        const { connection, lastDisconnect } = update;
+        const { connection, lastDisconnect, qr } = update;
+        
+        // Si Baileys genera un código QR, se mostrará en texto ASCII en los registros de Render
+        if (qr) {
+            console.log('--- ESCANEA ESTE CÓDIGO QR CON TU WHATSAPP ---');
+        }
+
         if (connection === 'close') {
             const shouldReconnect = (lastDisconnect?.error)?.output?.statusCode !== DisconnectReason.loggedOut;
             if (shouldReconnect) connectToWhatsApp();
         } else if (connection === 'open') {
-            console.log('¡Conectado a WhatsApp exitosamente!');
+            console.log('¡Conectado a WhatsApp exitosamente mediante QR!');
         }
     });
 
