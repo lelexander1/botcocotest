@@ -30,6 +30,7 @@ server.listen(PORT, () => {
 });
 
 const cooldowns = new Map();
+const commandFloodTracker = new Map(); // Control anti-flood para comandos de texto
 const stickerSpamTracker = new Map(); 
 const stickerTimeouts = new Map();     
 const propuestasMatrimonio = new Map(); 
@@ -224,6 +225,7 @@ async function connectToWhatsApp() {
             );
         } catch {}
 
+        // --- SISTEMA ANTISPAM DE STICKERS ---
         if (from.endsWith('@g.us') && messageType === 'stickerMessage') {
             const ahora = Date.now();
             if (stickerTimeouts.has(sender)) {
@@ -254,6 +256,15 @@ async function connectToWhatsApp() {
 
         let body = m.message.imageMessage?.caption || m.message.videoMessage?.caption || m.message.extendedTextMessage?.text || m.message.conversation || '';
         if (!body.startsWith('#')) return;
+
+        // --- PROTECCIÓN ANTI-FLOOD DE COMANDOS (EVITA SATURACIÓN Y BLOQUEOS) ---
+        const ahoraComando = Date.now();
+        const ultimoComandoUser = commandFloodTracker.get(sender) || 0;
+        if (ahoraComando - ultimoComandoUser < 800) {
+            // Si el usuario spamea comandos con menos de 0.8s de diferencia, se ignoran para no colapsar la cola
+            return;
+        }
+        commandFloodTracker.set(sender, ahoraComando);
 
         const args = body.slice(1).trim().split(/ +/);
         const command = args.shift().toLowerCase();
