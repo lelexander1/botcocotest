@@ -1,4 +1,5 @@
 const { default: makeWASocket, DisconnectReason, downloadMediaMessage, initAuthCreds, BufferJSON } = require('@whiskeysockets/baileys');
+const { Sticker, StickerTypes } = require('wa-sticker-formatter');
 const pino = require('pino');
 const http = require('http');
 const { MongoClient } = require('mongodb');
@@ -604,15 +605,41 @@ async function connectToWhatsApp() {
         }
 
         if (command === 'tovideo' || command === 'vidtosgif' || command === 'gif') {
+            const { Sticker, createSticker, StickerTypes } = require('wa-sticker-formatter');
             const q = m.message.extendedTextMessage?.contextInfo?.quotedMessage;
-            if (messageType !== 'videoMessage' && !q?.videoMessage) return await sock.sendMessage(from, { text: '⚠️ Adjunta un video o responde a uno.' }, { quoted: m });
+            
+            const isVideo = messageType === 'videoMessage' || q?.videoMessage;
+            const isDocumentVideo = messageType === 'documentMessage' || q?.documentMessage;
+
+            if (!isVideo && !isDocumentVideo) {
+                return await sock.sendMessage(from, { text: '⚠️ Adjunta un video/GIF o responde a uno.' }, { quoted: m });
+            }
+
             try {
-                await sock.sendMessage(from, { text: '⏳ Convirtiendo video...' }, { quoted: m });
-                const buf = await downloadMediaMessage(messageType === 'videoMessage' ? m : { message: q }, 'buffer', {}, { logger: pino({ level: 'silent' }) });
-                if (buf.length > 6 * 1024 * 1024) return await sock.sendMessage(from, { text: '❌ El video pesa más de 6 MB.' }, { quoted: m });
-                const sticker = await convertirVideoAStickerAnimado(buf);
-                await sock.sendMessage(from, { sticker }, { quoted: m });
-            } catch { await sock.sendMessage(from, { text: '❌ Error al procesar el video.' }, { quoted: m }); }
+                await sock.sendMessage(from, { text: '⏳ Procesando video con wa-sticker-formatter...' }, { quoted: m });
+                const targetMsg = q ? { message: q } : m;
+                const buf = await downloadMediaMessage(targetMsg, 'buffer', {}, { logger: pino({ level: 'silent' }) });
+
+                if (buf.length > 8 * 1024 * 1024) {
+                    return await sock.sendMessage(from, { text: '❌ El archivo pesa más de 8 MB.' }, { quoted: m });
+                }
+
+                // Configurar y generar el sticker animado con wa-sticker-formatter
+                const sticker = new Sticker(buf, {
+                    pack: 'CocoBot Pack', // Nombre del pack
+                    author: 'Alencito',   // Autor
+                    type: StickerTypes.ANIMATED, // Forzar sticker animado
+                    categories: ['🤩', '🎉'], // Emojis asociados
+                    quality: 50,          // Calidad de compresión (0 - 100)
+                    fps: 15               // Fotogramas por segundo
+                });
+
+                const stickerBuffer = await sticker.toBuffer();
+                await sock.sendMessage(from, { sticker: stickerBuffer }, { quoted: m });
+            } catch (err) {
+                console.error('Error con wa-sticker-formatter:', err);
+                await sock.sendMessage(from, { text: '❌ Error al procesar el video a sticker animado.' }, { quoted: m });
+            }
         }
 
         if (command === 'toimg' || command === 'img') {
