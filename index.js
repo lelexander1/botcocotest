@@ -69,9 +69,9 @@ async function connectToWhatsApp() {
     await client.connect();
     const db = client.db('whatsapp_bot');
     const sessionCollection = db.collection('session');
-    const usersCollection = db.collection('users'); // Colección para economía y datos de usuarios
+    const usersCollection = db.collection('users');
     
-    console.log('📦 Conectado exitosamente a MongoDB Atlas');
+    console.log('📦 Conectado exitosamente à MongoDB Atlas');
 
     const { state, saveCreds } = await useMongoDBAuthState(sessionCollection);
 
@@ -111,7 +111,6 @@ async function connectToWhatsApp() {
 
     sock.ev.on('creds.update', saveCreds);
 
-    // Procesamiento de mensajes y comandos
     sock.ev.on('messages.upsert', async ({ messages }) => {
         const m = messages[0];
         if (!m.message || m.key.fromMe) return;
@@ -137,36 +136,36 @@ async function connectToWhatsApp() {
         const args = body.slice(prefix.length).trim().split(/ +/);
         const command = args.shift().toLowerCase();
 
-        // 1. Comando #ping / #p
+        // 1. Comando #ping
         if (command === 'ping' || command === 'p') {
             await sock.sendMessage(from, { text: '¡Pong! 🏓 Bot activo y en línea.' }, { quoted: m });
         }
 
-        // 2. Comando #menu / #help
+        // 2. Comando #menu
         if (command === 'menu' || command === 'help' || command === 'commands') {
-            const menuText = `
-╭━━━ 🤖 *COCOBOT (CLON)* ━━━
+            const menuText = 
+`╭━━━ 🤖 *COCOBOT (CLON)* ━━━
 ┃ ✐ *Desarrollado en Node.js*
 ╰━━━━━━━━━━━━━━━━━━━
  
 📌 *COMANDOS DISPONIBLES:*
 
 ✨ *Utilidades y Stickers*
-> `#s` o `#sticker` - Convierte una imagen en sticker.
+> '#s' o '#sticker' - Convierte una imagen en sticker.
 
 🪙 *Economía*
-> `#bal` - Revisa tus coins actuales.
-> `#work` - Trabaja para ganar coins.
-> `#daily` - Reclama tu recompensa diaria.
+> '#bal' - Revisa tus coins actuales.
+> '#work' - Trabaja para ganar coins.
+> '#daily' - Reclama tu recompensa diaria.
 
 🎉 *Interacción y Diversión*
-> `#hug` [@mención] - Dale un abrazo a alguien.
-> `#kiss` [@mención] - Dale un beso a alguien.
-> `#slap` [@mención] - Dale una bofetada a alguien.
+> '#hug' [@mención] - Dale un abrazo a alguien.
+> '#kiss' [@mención] - Dale un beso a alguien.
+> '#slap' [@mención] - Dale una bofetada a alguien.
 
 🌐 *Sistema*
-> `#ping` - Mide el estado del bot.
-`.trim();
+> '#ping' - Mide el estado del bot.`;
+
             await sock.sendMessage(from, { text: menuText }, { quoted: m });
         }
 
@@ -200,17 +199,17 @@ async function connectToWhatsApp() {
             }
         }
 
-        // 4. Comando de Economía: #bal (Balance)
+        // 4. Economía: #bal
         if (command === 'bal' || command === 'balance') {
             let user = await usersCollection.findOne({ jid: sender });
             const coins = user ? user.coins : 0;
             await sock.sendMessage(from, { text: `🪙 Tienes *${coins} coins* en tu cuenta.` }, { quoted: m });
         }
 
-        // 5. Comando de Economía: #work
+        // 5. Economía: #work
         if (command === 'work' || command === 'w') {
             let user = await usersCollection.findOne({ jid: sender });
-            const earned = Math.floor(Math.random() * 500) + 100; // Gana entre 100 y 600 coins
+            const earned = Math.floor(Math.random() * 500) + 100;
 
             if (!user) {
                 await usersCollection.insertOne({ jid: sender, coins: earned });
@@ -221,7 +220,7 @@ async function connectToWhatsApp() {
             await sock.sendMessage(from, { text: `💼 Trabajaste duro y ganaste *🪙 ${earned} coins*.` }, { quoted: m });
         }
 
-        // 6. Comando de Economía: #daily
+        // 6. Economía: #daily
         if (command === 'daily') {
             let user = await usersCollection.findOne({ jid: sender });
             const reward = 2000;
@@ -240,7 +239,7 @@ async function connectToWhatsApp() {
             await sock.sendMessage(from, { text: `🎉 ¡Reclamaste tu recompensa diaria de *🪙 ${reward} coins*!` }, { quoted: m });
         }
 
-        // 7. Comandos de Reacción (#hug, #kiss, #slap)
+        // 7. Reacciones (#hug, #kiss, #slap)
         if (['hug', 'kiss', 'slap'].includes(command)) {
             const target = m.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0];
             const actions = {
