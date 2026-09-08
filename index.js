@@ -10,12 +10,16 @@ ffmpeg.setFfmpegPath(ffmpegInstaller);
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const { GoogleGenAI } = require('@google/genai');
 
-// Servidor HTTP para Render y mecanismo anti-inactividad (Auto-ping)
+// Inicializar Gemini API usando la variable de entorno
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+
+// Servidor HTTP para Render y mecanismo anti-inactividad optimizado a cada 5 minutos
 const PORT = process.env.PORT || 3000;
 const server = http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('CocoBot optimizado 24/7 con GIFs dinámicos en anuncios y despedidas!\n');
+    res.end('CocoBot con Gemini IA activo 24/7!\n');
 });
 
 server.listen(PORT, () => {
@@ -24,7 +28,7 @@ server.listen(PORT, () => {
     setInterval(() => {
         const appUrl = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
         http.get(appUrl, (res) => {}).on('error', (err) => {});
-    }, 10 * 60 * 1000);
+    }, 5 * 60 * 1000);
 });
 
 const cooldowns = new Map();
@@ -90,7 +94,7 @@ async function useMongoDBAuthState(collection) {
     };
 }
 
-// Función robusta para convertir video a sticker animado usando archivos temporales en Render
+// Función robusta para convertir video a sticker animado
 async function convertirVideoAStickerAnimado(videoBuffer) {
     const tempInputPath = path.join(os.tmpdir(), `input_${Date.now()}.mp4`);
     const tempOutputPath = path.join(os.tmpdir(), `output_${Date.now()}.webp`);
@@ -133,7 +137,7 @@ async function convertirVideoAStickerAnimado(videoBuffer) {
     });
 }
 
-// Función auxiliar para obtener un GIF animado aleatorio desde Giphy según una temática
+// Función auxiliar para obtener un GIF animado aleatorio desde Giphy
 async function obtenerGifAleatorio(queryTematica, urlRespaldoFijo) {
     try {
         const apiKey = process.env.GIPHY_API_KEY;
@@ -144,7 +148,6 @@ async function obtenerGifAleatorio(queryTematica, urlRespaldoFijo) {
                 const randomGif = gifs[Math.floor(Math.random() * gifs.length)];
                 const gifUrl = randomGif.images.downsized_medium.url;
                 
-                // Convertir a sticker animado WebP
                 const response = await axios.get(gifUrl, { responseType: 'arraybuffer' });
                 return await sharp(Buffer.from(response.data), { animated: true })
                     .resize(512, 512, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
@@ -154,7 +157,6 @@ async function obtenerGifAleatorio(queryTematica, urlRespaldoFijo) {
         }
     } catch (e) {}
 
-    // Respaldo por si falla la API de Giphy
     try {
         const response = await axios.get(urlRespaldoFijo, { responseType: 'arraybuffer' });
         return await sharp(Buffer.from(response.data), { animated: true })
@@ -227,7 +229,7 @@ async function connectToWhatsApp() {
 
     sock.ev.on('creds.update', saveCreds);
 
-    // --- EVENTO DE BIENVENIDA Y DESPEDIDA CON GIF AUTOMÁTICO ---
+    // --- EVENTO DE BIENVENIDA Y DESPEDIDA ---
     sock.ev.on('group-participants.update', async (anu) => {
         try {
             const mdata = await sock.groupMetadata(anu.id);
@@ -243,8 +245,6 @@ async function connectToWhatsApp() {
                 } 
                 else if (anu.action === 'remove' || anu.action === 'leave') {
                     let goodbyeMsg = groupConfig?.goodbye || `🚪 @${userTag} ha dejado el grupo. ¡Hasta luego! 👋`;
-                    
-                    // Enviar texto de despedida y un sticker animado aleatorio de tristeza/despedida
                     await sock.sendMessage(anu.id, { text: goodbyeMsg, mentions: [user] });
                     
                     const stickerBye = await obtenerGifAleatorio('sad goodbye anime crying', 'https://media.giphy.com/media/7SF5scMBmlAFrg4uUs/giphy.gif');
@@ -305,6 +305,9 @@ async function connectToWhatsApp() {
  
 📌 *COMANDOS DISPONIBLES:*
 
+🧠 *Inteligencia Artificial*
+> '#ia [pregunta]' - Consulta a Gemini AI cualquier duda.
+
 ✨ *Stickers, Videos y Juegos*
 > '#s' - Imagen a sticker
 > '#gif' o '#tovideo' - Video a sticker animado
@@ -317,17 +320,41 @@ async function connectToWhatsApp() {
 > '#cumples' - Lista y días faltantes.
 
 ⚙️ *Configuración de Grupo (Admin)*
-> '#setwelcome [texto]' - Cambia el mensaje de bienvenida.
-> '#setgoodbye [texto]' - Cambia el mensaje de despedida.
+> '#setwelcome [texto]' - Mensaje de bienvenida.
+> '#setgoodbye [texto]' - Mensaje de despedida.
 
 📢 *Administración (Privado)*
-> '#anuncio [texto]' - Comunicado oficial (Con GIF aleatorio)
+> '#anuncio [texto]' - Comunicado oficial
 
 🪙 *Economía & 🎉 Diversión*
 > '#bal', '#work', '#daily'
 > '#hug', '#kiss', '#slap' [@usuario]`;
 
             await sock.sendMessage(from, { text: menuText }, { quoted: m });
+        }
+
+        // --- COMANDO DE INTELIGENCIA ARTIFICIAL (GEMINI) ---
+        if (command === 'ia' || command === 'gemini' || command === 'ai') {
+            const promptTexto = args.join(' ');
+            if (!promptTexto) {
+                return await sock.sendMessage(from, { text: '⚠️ Escribe algo para consultarle a la IA.\nEjemplo: *#ia ¿Quién escribió Cien años de soledad?*' }, { quoted: m });
+            }
+
+            try {
+                await sock.sendMessage(from, { text: '🤖 Pensando respuesta...' }, { quoted: m });
+
+                // Llamada oficial a la API de Gemini (modelo gemini-2.5-flash)
+                const response = await ai.models.generateContent({
+                    model: 'gemini-2.5-flash',
+                    contents: promptTexto,
+                });
+
+                const respuestaIA = response.text || 'Lo siento, no pude procesar una respuesta.';
+                await sock.sendMessage(from, { text: `🤖 *Gemini IA*:\n\n${respuestaIA}` }, { quoted: m });
+            } catch (error) {
+                console.error('Error al consultar Gemini:', error);
+                await sock.sendMessage(from, { text: '❌ Ocurrió un error al conectar con la Inteligencia Artificial.' }, { quoted: m });
+            }
         }
 
         // --- SISTEMA DE CUMPLEAÑOS ---
@@ -483,7 +510,7 @@ async function connectToWhatsApp() {
             }
         }
 
-        // --- COMANDO #ANUNCIO CON GIF ALEATORIO DE ATENCIÓN ---
+        // --- COMANDO #ANUNCIO ---
         if (command === 'anuncio') {
             const tuLidOSender = '275028952228088';
             const groupId = '120363422057355283@g.us'; 
@@ -496,10 +523,8 @@ async function connectToWhatsApp() {
             }
 
             try {
-                // Enviar texto del anuncio al grupo
                 await sock.sendMessage(groupId, { text: `📢 *ANUNCIO OFICIAL* 📢\n\n${anuncioTexto}` });
                 
-                // Enviar un sticker animado aleatorio de anuncio/atención
                 const stickerAnuncio = await obtenerGifAleatorio('attention alert news announcement', 'https://media.giphy.com/media/xT9IgzoKnwFNmISR9I/giphy.gif');
                 if (stickerAnuncio) {
                     await sock.sendMessage(groupId, { sticker: stickerAnuncio });
@@ -578,7 +603,7 @@ async function connectToWhatsApp() {
     });
 }
 
-// Verificador automático estrictamente en hora de Perú (America/Lima) a las 00:00
+// Verificador automático de cumpleaños en hora de Perú (America/Lima) a las 00:00
 function iniciarVerificadorCumpleaños(sock, usersCollection) {
     const groupId = '120363422057355283@g.us'; 
     let ultimoDiaFelicitado = ''; 

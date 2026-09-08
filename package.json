@@ -1,20 +1,19 @@
 {
-  "name": "whatsapp-bot-cocobot",
+  "name": "cocobot-whatsapp",
   "version": "1.0.0",
+  "description": "Bot de WhatsApp multifuncional con Gemini IA, MongoDB y Render",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
-    "@whiskeysockets/baileys": "^6.7.12",
+    "@google/genai": "^0.1.1",
+    "@whiskeysockets/baileys": "^6.7.5",
     "axios": "^1.7.0",
     "ffmpeg-static": "^5.2.0",
     "fluent-ffmpeg": "^2.1.2",
-    "mongodb": "^6.3.0",
-    "pino": "^9.0.0",
-    "sharp": "^0.33.2"
-  },
-  "engines": {
-    "node": ">=18.x"
+    "mongodb": "^6.0.0",
+    "pino": "^8.0.0",
+    "sharp": "^0.33.0"
   }
 }
