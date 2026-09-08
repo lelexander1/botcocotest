@@ -8,7 +8,7 @@ const sharp = require('sharp');
 const PORT = process.env.PORT || 3000;
 const server = http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('Bot activo 24/7 con MongoDB, Sharp y Cooldown!\n');
+    res.end('Bot activo 24/7 con MongoDB, Sharp, Cooldown y Anuncios!\n');
 });
 
 server.listen(PORT, () => {
@@ -135,6 +135,12 @@ async function connectToWhatsApp() {
         const sender = m.key.participant || from;
         const messageType = Object.keys(m.message)[0];
 
+        // Imprimir ID de grupo en consola para que puedas sacarlo fácilmente
+        if (from.endsWith('@g.us')) {
+            console.log(`📌 ID del Grupo Actual: ${from}`);
+        }
+
+        // Extracción robusta del cuerpo del mensaje (incluye captions en imágenes y videos)
         let body = '';
         if (messageType === 'conversation') {
             body = m.message.conversation;
@@ -144,6 +150,11 @@ async function connectToWhatsApp() {
             body = m.message.imageMessage.caption || '';
         } else if (messageType === 'videoMessage') {
             body = m.message.videoMessage.caption || '';
+        } else {
+            body = m.message.imageMessage?.caption || 
+                   m.message.videoMessage?.caption || 
+                   m.message.extendedTextMessage?.text || 
+                   m.message.conversation || '';
         }
 
         const prefix = '#';
@@ -154,7 +165,7 @@ async function connectToWhatsApp() {
 
         // Control de Cooldown anti-spam para comandos de economía en grupos
         if (['work', 'w', 'daily'].includes(command)) {
-            const cooldownTime = command === 'daily' ? 24 * 60 * 60 * 1000 : 30 * 1000; // 30 segundos para work, 24 horas para daily
+            const cooldownTime = command === 'daily' ? 24 * 60 * 60 * 1000 : 30 * 1000;
             const userCooldownKey = `${sender}-${command}`;
             const lastTime = cooldowns.get(userCooldownKey) || 0;
             const now = Date.now();
@@ -188,6 +199,10 @@ async function connectToWhatsApp() {
 
 ✨ *Utilidades y Stickers*
 > '#s' o '#sticker' - Convierte una imagen en sticker.
+> '#toimg' - Convierte un sticker en imagen (respondiendo al sticker).
+
+📢 *Administración (Privado)*
+> '#anuncio [texto]' - Envía un comunicado oficial al grupo (Solo Dueño).
 
 🪙 *Economía*
 > '#bal' - Revisa tus coins actuales.
@@ -200,12 +215,21 @@ async function connectToWhatsApp() {
 > '#slap' [@mención] - Dale una bofetada a alguien.
 
 🌐 *Sistema*
-> '#ping' - Mide el estado del bot.`;
+> '#ping' - Mide el estado del bot.
+> '#idgrupo' - Mide o muestra el ID del grupo actual.`;
 
             await sock.sendMessage(from, { text: menuText }, { quoted: m });
         }
 
-        // 3. Comando de Stickers (#s) con Sharp
+        // 3. Comando para obtener ID de grupo
+        if (command === 'groupid' || command === 'idgrupo') {
+            if (!from.endsWith('@g.us')) {
+                return await sock.sendMessage(from, { text: '⚠️ Este comando solo se puede usar dentro de un grupo.' }, { quoted: m });
+            }
+            await sock.sendMessage(from, { text: `🆔 El ID de este grupo es:\n\`\`\`${from}\`\`\`` }, { quoted: m });
+        }
+
+        // 4. Comando de Stickers (#s) con Sharp
         if (command === 's' || command === 'sticker') {
             const quotedMessage = m.message.extendedTextMessage?.contextInfo?.quotedMessage;
             const isMedia = messageType === 'imageMessage' || messageType === 'videoMessage';
@@ -232,14 +256,68 @@ async function connectToWhatsApp() {
             }
         }
 
-        // 4. Economía: #bal
+        // 5. Comando #toimg (Sticker a Imagen)
+        if (command === 'toimg' || command === 'img') {
+            const quotedMessage = m.message.extendedTextMessage?.contextInfo?.quotedMessage;
+            const isQuotedSticker = quotedMessage && quotedMessage.stickerMessage;
+
+            if (!isQuotedSticker) {
+                return await sock.sendMessage(from, { text: '⚠️ Por favor, responde a un sticker con el comando *#toimg* para convertirlo en imagen.' }, { quoted: m });
+            }
+
+            try {
+                await sock.sendMessage(from, { text: '⏳ Convirtiendo sticker a imagen...' }, { quoted: m });
+                const mediaMsg = { message: quotedMessage };
+                const buffer = await downloadMediaMessage(mediaMsg, 'buffer', {}, { logger: pino({ level: 'silent' }) });
+
+                const imageBuffer = await sharp(buffer)
+                    .png()
+                    .toBuffer();
+
+                await sock.sendMessage(from, { image: imageBuffer, caption: '✨ Aquí tienes tu imagen convertida desde el sticker.' }, { quoted: m });
+            } catch (error) {
+                console.error('Error al convertir sticker a imagen:', error);
+                await sock.sendMessage(from, { text: '❌ Ocurrió un error al convertir el sticker a imagen.' }, { quoted: m });
+            }
+        }
+
+        // 6. Comando #anuncio (Solo para ti en chat privado)
+        if (command === 'anuncio' || command === 'broadcast') {
+            const tuNumeroJid = '51924876085@s.whatsapp.net'; 
+            const groupId = 'TU_GRUPO_JID_AQUI@g.us'; // Reemplaza esto con el ID real de tu grupo obtenido por consola o #idgrupo
+
+            if (from.endsWith('@s.whatsapp.net')) {
+                if (sender !== tuNumeroJid) {
+                    return await sock.sendMessage(from, { text: '⚠️ No tienes permisos para usar este comando.' }, { quoted: m });
+                }
+
+                const anuncioTexto = args.join(' ');
+                if (!anuncioTexto) {
+                    return await sock.sendMessage(from, { text: '⚠️ Escribe el mensaje que deseas enviar al grupo (ej: #anuncio Hola a todos).' }, { quoted: m });
+                }
+
+                if (groupId.includes('TU_GRUPO_JID_AQUI')) {
+                    return await sock.sendMessage(from, { text: '⚠️ Debes configurar el `groupId` correcto en el código del bot antes de enviar anuncios.' }, { quoted: m });
+                }
+
+                try {
+                    await sock.sendMessage(groupId, { text: `📢 *ANUNCIO OFICIAL* 📢\n\n${anuncioTexto}` });
+                    await sock.sendMessage(from, { text: '✅ ¡Anuncio enviado al grupo correctamente!' }, { quoted: m });
+                } catch (error) {
+                    console.error('Error al enviar el anuncio:', error);
+                    await sock.sendMessage(from, { text: '❌ Ocurrió un error al enviar el anuncio al grupo.' }, { quoted: m });
+                }
+            }
+        }
+
+        // 7. Economía: #bal
         if (command === 'bal' || command === 'balance') {
             let user = await usersCollection.findOne({ jid: sender });
             const coins = user ? user.coins : 0;
             await sock.sendMessage(from, { text: `🪙 Tienes *${coins} coins* en tu cuenta.` }, { quoted: m });
         }
 
-        // 5. Economía: #work
+        // 8. Economía: #work
         if (command === 'work' || command === 'w') {
             let user = await usersCollection.findOne({ jid: sender });
             const earned = Math.floor(Math.random() * 500) + 100;
@@ -253,7 +331,7 @@ async function connectToWhatsApp() {
             await sock.sendMessage(from, { text: `💼 Trabajaste duro y ganaste *🪙 ${earned} coins*.` }, { quoted: m });
         }
 
-        // 6. Economía: #daily
+        // 9. Economía: #daily
         if (command === 'daily') {
             let user = await usersCollection.findOne({ jid: sender });
             const reward = 2000;
@@ -272,7 +350,7 @@ async function connectToWhatsApp() {
             await sock.sendMessage(from, { text: `🎉 ¡Reclamaste tu recompensa diaria de *🪙 ${reward} coins*!` }, { quoted: m });
         }
 
-        // 7. Reacciones (#hug, #kiss, #slap)
+        // 10. Reacciones (#hug, #kiss, #slap)
         if (['hug', 'kiss', 'slap'].includes(command)) {
             const target = m.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0];
             const actions = {
