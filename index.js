@@ -4,6 +4,7 @@ const http = require('http');
 const { MongoClient } = require('mongodb');
 const sharp = require('sharp');
 const axios = require('axios');
+const FormData = require('form-data');
 const ffmpeg = require('fluent-ffmpeg');
 const ffmpegInstaller = require('ffmpeg-static');
 ffmpeg.setFfmpegPath(ffmpegInstaller);
@@ -477,25 +478,48 @@ async function connectToWhatsApp() {
             } catch { await sock.sendMessage(from, { text: '❌ Error al convertir.' }, { quoted: m }); }
         }
 
+        // --- #toimghd CON DEEPAI (UPSCALER DE IA) ---
         if (command === 'toimghd' || command === 'imghd') {
             const q = m.message.extendedTextMessage?.contextInfo?.quotedMessage;
             if (messageType !== 'stickerMessage' && !q?.stickerMessage) {
-                return await sock.sendMessage(from, { text: '⚠️ Envía o responde a un sticker para hacerlo HD.' }, { quoted: m });
+                return await sock.sendMessage(from, { text: '⚠️ Envía o responde a un sticker para escalarlo a HD con IA.' }, { quoted: m });
             }
 
             try {
-                await sock.sendMessage(from, { text: '✨ Mejorando calidad a HD...' }, { quoted: m });
-                const buf = await downloadMediaMessage(messageType === 'stickerMessage' ? m : { message: q }, 'buffer', {}, { logger: pino({ level: 'silent' }) });
-                
-                const imageBuffer = await sharp(buf)
-                    .resize(1024, 1024, { fit: 'contain', background: { r: 255, g: 255, b: 255, alpha: 1 } })
-                    .sharpen()
-                    .png()
-                    .toBuffer();
+                const deepAiKey = process.env.DEEPAI_API_KEY;
+                if (!deepAiKey) {
+                    return await sock.sendMessage(from, { text: '❌ Falta configurar la variable DEEPAI_API_KEY en el servidor.' }, { quoted: m });
+                }
 
-                await sock.sendMessage(from, { image: imageBuffer, caption: '✨ ¡Sticker convertido a HD con éxito!' }, { quoted: m });
+                await sock.sendMessage(from, { text: '🤖 Mejorando imagen a HD con IA (DeepAI)...' }, { quoted: m });
+                
+                const buf = await downloadMediaMessage(messageType === 'stickerMessage' ? m : { message: q }, 'buffer', {}, { logger: pino({ level: 'silent' }) });
+                const pngBuffer = await sharp(buf).png().toBuffer();
+
+                const form = new FormData();
+                form.append('image', pngBuffer, { filename: 'sticker.png', contentType: 'image/png' });
+
+                const response = await axios.post('https://api.deepai.org/api/torch-srgan', form, {
+                    headers: {
+                        'api-key': deepAiKey,
+                        ...form.getHeaders()
+                    }
+                });
+
+                const imageUrlHD = response.data.output_url;
+                if (!imageUrlHD) throw new Error('No se obtuvo URL de DeepAI');
+
+                const imageResponse = await axios.get(imageUrlHD, { responseType: 'arraybuffer' });
+                const finalImageBuffer = Buffer.from(imageResponse.data);
+
+                await sock.sendMessage(from, { 
+                    image: finalImageBuffer, 
+                    caption: '✨ ¡Imagen mejorada a HD mediante Inteligencia Artificial!' 
+                }, { quoted: m });
+
             } catch (error) {
-                await sock.sendMessage(from, { text: '❌ Ocurrió un error al procesar la imagen en HD.' }, { quoted: m });
+                console.error('Error con DeepAI:', error);
+                await sock.sendMessage(from, { text: '❌ Ocurrió un error al procesar el sticker con la IA.' }, { quoted: m });
             }
         }
 
