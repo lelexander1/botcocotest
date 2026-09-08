@@ -220,7 +220,7 @@ async function connectToWhatsApp() {
 `⚡ *PANEL PRINCIPAL - CocoBot* ⚡
 ────────────────────────
 👤 *Creado por:* Alencito
-🚀 *Estado:* Online 24/7 (Optimizado Gratis)
+🚀 *Estado:* Online 24/7
 ────────────────────────
  
 📌 *COMANDOS DISPONIBLES:*
