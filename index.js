@@ -1,4 +1,5 @@
 const { default: makeWASocket, DisconnectReason, downloadMediaMessage, initAuthCreds, BufferJSON } = require('@whiskeysockets/baileys');
+const { Sticker, StickerTypes } = require('wa-sticker-formatter');
 const pino = require('pino');
 const http = require('http');
 const { MongoClient } = require('mongodb');
@@ -481,9 +482,9 @@ if (command === 'tovideo' || command === 'vidtosgif' || command === 'gif' || com
         // Magia de wa-sticker-formatter (funciona para imágenes estáticas y videos)
         const sticker = new Sticker(buffer, {
             pack: 'CocoBot', // Nombre del paquete
-            author: 'Gabo',  // Autor del sticker
+            author: 'Ñelmer',  // Autor del sticker
             type: StickerTypes.FULL, // FULL (cuadrado) o CROPPED
-            quality: 40,     // Calidad (40-50 es ideal para videos)
+            quality: 70,     // Calidad (40-50 es ideal para videos)
             background: 'transparent'
         });
 
