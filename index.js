@@ -494,7 +494,7 @@ if (command === 'tovideo' || command === 'vidtosgif' || command === 'gif' || com
     } catch (error) {
         // Log vital para hacer troubleshooting si sigue fallando
         console.error('❌ Error crítico en motor de stickers:', error);
-        await sock.sendMessage(from, { text: '❌ Ocurrió un error al procesar el archivo. Intenta con uno más corto.' }, { quoted: m });
+        await sock.sendMessage(from, { text: '❌ Ocurrió un error al procesar el archivo. Intenta con uno más corto elmerchupaganpi.' }, { quoted: m });
     }
 }
 ------------------------------
