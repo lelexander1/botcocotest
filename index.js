@@ -1,6 +1,6 @@
 const { default: makeWASocket, DisconnectReason, downloadMediaMessage, initAuthCreds, BufferJSON } = require('@whiskeysockets/baileys');
 const pino = require('pino');
-const http = require('http');
+const http = http = require('http');
 const { MongoClient } = require('mongodb');
 const sharp = require('sharp');
 const axios = require('axios');
@@ -157,6 +157,7 @@ async function connectToWhatsApp() {
     const usersCollection = db.collection('users');
     const groupsCollection = db.collection('groups');
     const remindersCollection = db.collection('reminders');
+    const bankCollection = db.collection('user_bank'); // Banco personal (#still)
     
     console.log('📦 Conectado a MongoDB Atlas exitosamente');
 
@@ -215,7 +216,7 @@ async function connectToWhatsApp() {
         const sender = m.key.participant || from;
         const messageType = Object.keys(m.message)[0];
 
-        // --- CONTADOR AUTOMÁTICO DE MENSAJES PARA #TOPMSG Y #LOWMSG ---
+        // --- CONTADOR AUTOMÁTICO DE MENSAJES (#TOPMSG Y #LOWMSG) ---
         try {
             await usersCollection.updateOne(
                 { jid: sender }, 
@@ -276,36 +277,162 @@ async function connectToWhatsApp() {
         }
 
         if (command === 'menu' || command === 'help') {
-            const menu = `⚡ *PANEL PRINCIPAL - CocoBot* ⚡\n────────────────────────\n👤 *Creado por:* Alencito\n🚀 *Estado:* Online 24/7 (Anti-caídas)\n────────────────────────\n\n📌 *COMANDOS:* \n> '#ia [texto]' \n> '#recordatorio [tiempo] [mensaje]' \n> '#misrecordatorios', '#borrarrec [id]' \n> '#s', '#gif', '#toimg', '#kill [@usuario]' \n> '#consumo' o '#stats' (Admin) \n> '#topmsg', '#lowmsg' \n> '#genero', '#casarse', '#aceptar', '#perfil' \n> '#cumple DD/MM', '#cumples' \n> '#setwelcome', '#setgoodbye', '#untimeout' \n> '#flip', '#del', '#anuncio', '#bal', '#work', '#daily'`;
+            const menu = `⚡ *PANEL PRINCIPAL - CocoBot* ⚡\n────────────────────────\n👤 *Creado por:* Alencito\n🚀 *Estado:* Online 24/7 (Anti-caídas)\n────────────────────────\n\n📌 *COMANDOS:* \n> '#ia [texto]' \n> '#chistes' \n> '#imagen [tema]' \n> '#still [texto / ver / borrar]' \n> '#edad [número]', '#frase [texto]', '#setsticker' \n> '#perfil [@usuario]' \n> '#recordatorio [tiempo] [mensaje]' \n> '#misrecordatorios', '#borrarrec [id]' \n> '#s', '#gif', '#toimg', '#kill [@usuario]' \n> '#consumo' (Admin), '#topmsg', '#lowmsg' \n> '#genero [hombre/mujer/cosa]', '#casarse [@usuario]', '#aceptar' \n> '#cumple DD/MM', '#cumples' \n> '#setwelcome', '#setgoodbye', '#untimeout' \n> '#flip', '#del', '#anuncio', '#bal', '#work', '#daily'`;
             return await sock.sendMessage(from, { text: menu }, { quoted: m });
+        }
+
+        // --- COMANDO #CHISTES ---
+        if (command === 'chistes' || command === 'chiste') {
+            const chistesList = [
+                "— Papá, papá, ¿qué se siente tener un hijo tan guapo, inteligente y perfecto?\n— No lo sé, hijo, pregúntale a tu abuelo.",
+                "— ¡Camarero, camarero! Hay una mosca en mi sopa.\n— No se preocupe, caballero, nadará muy bien por ese precio.",
+                "— ¿Por qué las focas miran siempre hacia arriba en los espectáculos?\n— Porque ahí están los focos.",
+                "— Hola, ¿está Agustín?\n— No, estoy incomodísimo.",
+                "— ¿Cuál es el colmo de un electricista?\n— No poder seguir corriente.",
+                "— ¿Qué hace una abeja en el gimnasio?\n— ¡Zum-ba!"
+            ];
+            const chisteAleatorio = chistesList[Math.floor(Math.random() * chistesList.length)];
+            return await sock.sendMessage(from, { text: `😂 *Chiste:* \n\n${chisteAleatorio}` }, { quoted: m });
+        }
+
+        // --- COMANDO #IMAGEN ---
+        if (command === 'imagen' || command === 'imgsearch') {
+            const query = args.join(' ');
+            if (!query) return await sock.sendMessage(from, { text: '⚠️ Escribe qué imagen buscas. Ej: *#imagen paisajes* o *#imagen gatos*' }, { quoted: m });
+            try {
+                await sock.sendMessage(from, { text: '🔍 Buscando imagen...' }, { quoted: m });
+                // Usando la API de Unsplash Source aleatoria basada en la consulta
+                const imageUrl = `https://source.unsplash.com/featured/800x600/?${encodeURIComponent(query)}`;
+                await sock.sendMessage(from, { image: { url: imageUrl }, caption: `🖼️ Resultado para: *${query}*` }, { quoted: m });
+            } catch {
+                await sock.sendMessage(from, { text: '❌ No se pudo obtener la imagen en este momento.' }, { quoted: m });
+            }
+        }
+
+        // --- BANCO PERSONAL #STILL ---
+        if (command === 'still') {
+            const subAction = args[0]?.toLowerCase();
+            const textoBanco = args.join(' ');
+
+            if (!subAction || subAction === 'ver' || subAction === 'lista') {
+                const notas = await bankCollection.find({ userJid: sender }).toArray();
+                if (notas.length === 0) {
+                    return await sock.sendMessage(from, { text: '📭 Tu banco personal `#still` está vacío.\nAñade algo escribiendo: *#still [tu texto o nota]*' }, { quoted: m });
+                }
+                let txt = '📦 *TU BANCO PERSONAL (#STILL)* 📦\n\n';
+                notas.forEach((n, idx) => {
+                    txt += `${idx + 1}. ID: \`${n._id}\`\n   📝 "${n.content}"\n\n`;
+                });
+                txt += `💡 Usa *#still borrar [ID]* para eliminar una nota.`;
+                return await sock.sendMessage(from, { text: txt }, { quoted: m });
+            }
+
+            if (subAction === 'borrar' || subAction === 'del') {
+                const { ObjectId } = require('mongodb');
+                const idNota = args[1];
+                if (!idNota) return await sock.sendMessage(from, { text: '⚠️ Especifica el ID de la nota a borrar. Revisa tu lista con *#still ver*.' }, { quoted: m });
+                try {
+                    const res = await bankCollection.deleteOne({ _id: new ObjectId(idNota), userJid: sender });
+                    if (res.deletedCount > 0) return await sock.sendMessage(from, { text: '✅ Nota eliminada de tu banco personal.' }, { quoted: m });
+                    else return await sock.sendMessage(from, { text: '❌ No se encontró esa nota en tu banco.' }, { quoted: m });
+                } catch {
+                    return await sock.sendMessage(from, { text: '⚠️ ID de nota inválido.' }, { quoted: m });
+                }
+            }
+
+            // Guardar nueva nota o texto en el banco
+            await bankCollection.insertOne({ userJid: sender, content: textoBanco, createdAt: new Date() });
+            return await sock.sendMessage(from, { text: `✅ ¡Guardado en tu banco personal (#still) con éxito!\n📌 "${textoBanco}"` }, { quoted: m });
+        }
+
+        // --- GESTIÓN DE PERFIL (#EDAD, #FRASE, #SETSTICKER) ---
+        if (command === 'edad') {
+            const edadNum = parseInt(args[0]);
+            if (!edadNum || isNaN(edadNum) || edadNum <= 0 || edadNum > 120) {
+                return await sock.sendMessage(from, { text: '⚠️ Por favor, indica una edad válida. Ej: *#edad 22*' }, { quoted: m });
+            }
+            await usersCollection.updateOne({ jid: sender }, { $set: { edad: edadNum } }, { upsert: true });
+            return await sock.sendMessage(from, { text: `✅ ¡Edad actualizada a *${edadNum} años*!` }, { quoted: m });
+        }
+
+        if (command === 'frase' || command === 'bio') {
+            const fraseText = args.join(' ');
+            if (!fraseText) return await sock.sendMessage(from, { text: '⚠️ Escribe tu frase personal. Ej: *#frase Sin miedo al éxito*' }, { quoted: m });
+            await usersCollection.updateOne({ jid: sender }, { $set: { frase: fraseText } }, { upsert: true });
+            return await sock.sendMessage(from, { text: `✅ Frase de perfil actualizada correctamente.` }, { quoted: m });
+        }
+
+        if (command === 'setsticker' || command === 'identidad') {
+            const q = m.message.extendedTextMessage?.contextInfo?.quotedMessage;
+            if (messageType !== 'stickerMessage' && !q?.stickerMessage) {
+                return await sock.sendMessage(from, { text: '⚠️ Responde a un sticker con el comando *#setsticker* para asociarlo a tu perfil.' }, { quoted: m });
+            }
+            try {
+                const targetMsg = q ? { message: q } : m;
+                const stickerBuf = await downloadMediaMessage(targetMsg, 'buffer', {}, { logger: pino({ level: 'silent' }) });
+                // Guardar el sticker como base64 en la base de datos del usuario
+                const base64Sticker = stickerBuf.toString('base64');
+                await usersCollection.updateOne({ jid: sender }, { $set: { stickerBase64: base64Sticker } }, { upsert: true });
+                await sock.sendMessage(from, { text: '✅ ¡Sticker de identidad guardado en tu perfil con éxito!' }, { quoted: m });
+            } catch {
+                await sock.sendMessage(from, { text: '❌ Error al guardar el sticker.' }, { quoted: m });
+            }
+        }
+
+        // --- PERFIL AMPLIADO ---
+        if (command === 'perfil' || command === 'verperfil') {
+            const target = m.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0] || m.message.extendedTextMessage?.contextInfo?.participant || sender;
+            const userData = await usersCollection.findOne({ jid: target }) || {};
+            
+            let nombrePareja = 'Soltero/a 💔';
+            if (userData.pareja) {
+                nombrePareja = `@${userData.pareja.split('@')[0]} 💍`;
+            }
+
+            const perfilTxt = `👤 *PERFIL DE USUARIO* 👤\n` +
+                `────────────────────────\n` +
+                `📌 *Usuario:* @${target.split('@')[0]}\n` +
+                `🎂 *Edad:* ${userData.edad ? userData.edad + ' años' : 'No especificada (Usa #edad)'}\n` +
+                `⚧️ *Género:* ${userData.genero ? userData.genero : 'No especificado (Usa #genero)'}\n` +
+                `💬 *Frase:* "${userData.frase ? userData.frase : 'Sin frase (Usa #frase)'}"\n` +
+                `💍 *Estado Civil:* ${nombrePareja}\n` +
+                `🎂 *Cumpleaños:* ${userData.cumple ? userData.cumple : 'No registrado (Usa #cumple)'}\n` +
+                `🪙 *Coins:* ${userData.coins || 0}\n` +
+                `📊 *Mensajes escritos:* ${userData.messageCount || 0}\n`;
+
+            await sock.sendMessage(from, { text: perfilTxt, mentions: [target, userData.pareja].filter(Boolean) }, { quoted: m });
+
+            // Si tiene sticker de identidad guardado, se lo enviamos también
+            if (userData.stickerBase64) {
+                try {
+                    const stickerBuffer = Buffer.from(userData.stickerBase64, 'base64');
+                    await sock.sendMessage(from, { sticker: stickerBuffer });
+                } catch {}
+            }
         }
 
         // --- COMANDO #KILL (EXPULSAR USUARIO CON GIF) ---
         if (command === 'kill' || command === 'ban') {
             if (!from.endsWith('@g.us')) return await sock.sendMessage(from, { text: '⚠️ Este comando solo se puede usar en grupos.' }, { quoted: m });
-            const meta = await sock.groupMetadata(from);
-            const admins = meta.participants.filter(p => p.admin !== null).map(p => p.id);
-            const botNumber = sock.user.id.split(':')[0] + '@s.whatsapp.net';
-            const isBotAdmin = admins.includes(botNumber);
-
-            if (!admins.includes(sender) && !sender.includes('275028952228088')) {
-                return await sock.sendMessage(from, { text: '⚠️ Solo los administradores pueden usar este comando.' }, { quoted: m });
-            }
-            if (!isBotAdmin) {
-                return await sock.sendMessage(from, { text: '❌ Necesito ser administrador del grupo para poder expulsar usuarios.' }, { quoted: m });
-            }
-
-            const target = m.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0] || m.message.extendedTextMessage?.contextInfo?.participant;
-            if (!target) {
-                return await sock.sendMessage(from, { text: '⚠️ Menciona o responde al usuario que deseas eliminar. Ej: *#kill @usuario*' }, { quoted: m });
-            }
-
             try {
+                const meta = await sock.groupMetadata(from);
+                const admins = meta.participants.filter(p => p.admin !== null).map(p => p.id);
+                const botNumber = sock.user.id.includes(':') ? sock.user.id.split(':')[0] + '@s.whatsapp.net' : sock.user.id;
+                
+                const isSenderAdmin = admins.includes(sender) || sender.includes('275028952228088');
+                const isBotAdmin = admins.includes(botNumber);
+
+                if (!isSenderAdmin) return await sock.sendMessage(from, { text: '⚠️ Solo los administradores pueden usar este comando.' }, { quoted: m });
+                if (!isBotAdmin) return await sock.sendMessage(from, { text: '❌ El bot necesita ser administrador del grupo para poder expulsar.' }, { quoted: m });
+
+                const target = m.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0] || m.message.extendedTextMessage?.contextInfo?.participant;
+                if (!target) return await sock.sendMessage(from, { text: '⚠️ Menciona al usuario. Ej: *#kill @usuario*' }, { quoted: m });
+
                 const stickerKill = await obtenerGifAleatorio('anime punch fight kick kickout', 'https://media.giphy.com/media/l1J9EdzfOSgfyfeLm/giphy.gif');
                 await sock.sendMessage(from, { text: `💥 ¡Hasta la vista, @${target.split('@')[0]}! Has sido eliminado del grupo. 🚀`, mentions: [target] }, { quoted: m });
                 if (stickerKill) await sock.sendMessage(from, { sticker: stickerKill });
                 await sock.groupParticipantsUpdate(from, [target], 'remove');
-            } catch (e) {
+            } catch {
                 await sock.sendMessage(from, { text: '❌ No se pudo expulsar al usuario.' }, { quoted: m });
             }
         }
@@ -313,15 +440,12 @@ async function connectToWhatsApp() {
         // --- COMANDO DE CONSUMO Y ESTADÍSTICAS DEL SERVIDOR (SOLO ADMINS) ---
         if (command === 'consumo' || command === 'stats' || command === 'recursos') {
             if (!sender.includes('275028952228088')) {
-                // Verificar si es admin en caso de grupo, o restringir al creador
                 if (from.endsWith('@g.us')) {
                     const meta = await sock.groupMetadata(from);
                     const admins = meta.participants.filter(p => p.admin !== null).map(p => p.id);
-                    if (!admins.includes(sender)) {
-                        return await sock.sendMessage(from, { text: '⚠️ Este comando de consumo de recursos y API es exclusivo para administradores.' }, { quoted: m });
-                    }
+                    if (!admins.includes(sender)) return await sock.sendMessage(from, { text: '⚠️ Comando exclusivo para administradores.' }, { quoted: m });
                 } else {
-                    return await sock.sendMessage(from, { text: '⚠️ Este comando solo puede ser ejecutado por administradores.' }, { quoted: m });
+                    return await sock.sendMessage(from, { text: '⚠️ Comando exclusivo para administradores.' }, { quoted: m });
                 }
             }
 
@@ -330,14 +454,6 @@ async function connectToWhatsApp() {
             const usedMem = totalMem - freeMem;
             const formatoMB = (bytes) => (bytes / (1024 * 1024)).toFixed(2) + ' MB';
 
-            // Estadísticas de disco de la instancia
-            let diskInfo = 'No disponible';
-            try {
-                const statsFs = fs.statSync(process.cwd());
-                diskInfo = 'Activo en sistema de archivos temporal/persistente';
-            } catch {}
-
-            // Probar latencia de MongoDB
             let mongoStatus = '🟢 Conectado (Óptimo)';
             let mongoLatencyMs = 0;
             const tStart = Date.now();
@@ -345,23 +461,21 @@ async function connectToWhatsApp() {
                 await db.command({ ping: 1 });
                 mongoLatencyMs = Date.now() - tStart;
             } catch {
-                mongoStatus = '🔴 Desconectado o con fallas';
+                mongoStatus = '🔴 Desconectado';
             }
 
             const statsText = `📊 *MONITOREO DE RECURSOS - COCOBOT* 📊\n` +
                 `────────────────────────\n` +
-                `🖥️ *Servidor / Hosting:* Render (Instancia Cloud)\n` +
+                `🖥️ *Hosting:* Render (Cloud Instance)\n` +
                 `🧠 *Memoria RAM Usada:* ${formatoMB(usedMem)} / ${formatoMB(totalMem)}\n` +
-                `💾 *Espacio de Disco:* ${diskInfo}\n` +
-                `⚡ *CPU Cores:* ${os.cpus().length} Núcleos (${os.cpus()[0].model.trim()})\n` +
+                `⚡ *CPU Cores:* ${os.cpus().length} Núcleos\n` +
                 `🗄️ *Base de Datos (MongoDB Atlas):*\n` +
                 `   • Estado: ${mongoStatus}\n` +
                 `   • Latencia API: ${mongoLatencyMs} ms\n` +
                 `📈 *Límites del Plan:* \n` +
                 `   • Límite RAM Render (Free): 512 MB\n` +
-                `   • Límite DB MongoDB (M0 Free): 512 MB de almacenamiento\n` +
-                `   • Límite Ancho de Banda: Ilimitado (Uso razonable)\n` +
-                `⏱️ *Tiempo en línea (Uptime):* ${(process.uptime() / 60).toFixed(1)} minutos\n`;
+                `   • Límite DB MongoDB (M0 Free): 512 MB\n` +
+                `⏱️ *Uptime:* ${(process.uptime() / 60).toFixed(1)} minutos\n`;
 
             return await sock.sendMessage(from, { text: statsText }, { quoted: m });
         }
@@ -378,7 +492,7 @@ async function connectToWhatsApp() {
             return await sock.sendMessage(from, { text: txt, mentions: topUsers.map(u => u.jid) }, { quoted: m });
         }
 
-        if (command === 'lowmsg' || command === 'menosactivos' || command === 'inactivos') {
+        if (command === 'lowmsg' || command === 'menosactivos') {
             const lowUsers = await usersCollection.find({ messageCount: { $exists: true } }).sort({ messageCount: 1 }).limit(5).toArray();
             if (lowUsers.length === 0) return await sock.sendMessage(from, { text: '📊 Aún no hay registros de mensajes.' }, { quoted: m });
 
@@ -387,58 +501,6 @@ async function connectToWhatsApp() {
                 txt += `${i + 1}. @${u.jid.split('@')[0]} ➡️ *${u.messageCount || 0} mensajes*\n`;
             });
             return await sock.sendMessage(from, { text: txt, mentions: lowUsers.map(u => u.jid) }, { quoted: m });
-        }
-
-        // --- SISTEMA DE RECORDATORIOS PRIVADOS ---
-        if (command === 'recordatorio' || command === 'rec') {
-            const tiempoStr = args[0];
-            const mensajeRec = args.slice(1).join(' ');
-
-            if (!tiempoStr || !mensajeRec) {
-                return await sock.sendMessage(from, { text: '⚠️ Formato incorrecto.\nUsa: *#recordatorio [tiempo] [mensaje]*\nEjemplo: *#recordatorio 10m Reunión con el equipo*' }, { quoted: m });
-            }
-
-            const match = tiempoStr.match(/^(\d+)([smh])$/);
-            if (!match) {
-                return await sock.sendMessage(from, { text: '⚠️ Unidad de tiempo inválida. Usa *s* (segundos), *m* (minutos) u *h* (horas).' }, { quoted: m });
-            }
-
-            const cantidad = parseInt(match[1]);
-            const unidad = match[2];
-            let multiplicador = 1000;
-            if (unidad === 'm') multiplicador = 60 * 1000;
-            if (unidad === 'h') multiplicador = 60 * 60 * 1000;
-
-            const fechaEjecucion = new Date(Date.now() + cantidad * multiplicador);
-            const resultado = await remindersCollection.insertOne({ userJid: sender, message: mensajeRec, executeAt: fechaEjecucion, createdAt: new Date() });
-            return await sock.sendMessage(from, { text: `✅ ¡Recordatorio programado con éxito!\nTe enviaré un mensaje privado en *${tiempoStr}* (ID: \`${resultado.insertedId}\`).` }, { quoted: m });
-        }
-
-        if (command === 'misrecordatorios') {
-            const misRecs = await remindersCollection.find({ userJid: sender }).toArray();
-            if (misRecs.length === 0) return await sock.sendMessage(from, { text: '📭 No tienes ningún recordatorio pendiente.' }, { quoted: m });
-
-            let txt = '⏰ *TUS RECORDATORIOS PENDIENTES* ⏰\n\n';
-            misRecs.forEach((r, idx) => {
-                const tiempoFaltante = Math.max(0, Math.ceil((new Date(r.executeAt) - Date.now()) / 1000 / 60));
-                txt += `${idx + 1}. *ID:* \`${r._id}\`\n   📌 "${r.message}"\n   ⏳ En aprox. ${tiempoFaltante} minuto(s)\n\n`;
-            });
-            txt += `💡 Usa *#borrarrec [ID]* para eliminar uno.`;
-            return await sock.sendMessage(from, { text: txt }, { quoted: m });
-        }
-
-        if (command === 'borrarrec') {
-            const { ObjectId } = require('mongodb');
-            const idInput = args[0];
-            if (!idInput) return await sock.sendMessage(from, { text: '⚠️ Especifica el ID del recordatorio. Usa *#misrecordatorios* para verlos.' }, { quoted: m });
-
-            try {
-                const eliminado = await remindersCollection.deleteOne({ _id: new ObjectId(idInput), userJid: sender });
-                if (eliminado.deletedCount > 0) return await sock.sendMessage(from, { text: '✅ Recordatorio eliminado correctamente.' }, { quoted: m });
-                else return await sock.sendMessage(from, { text: '❌ No se encontró ningún recordatorio con ese ID asociado a tu cuenta.' }, { quoted: m });
-            } catch {
-                return await sock.sendMessage(from, { text: '⚠️ El ID proporcionado no es válido.' }, { quoted: m });
-            }
         }
 
         // --- GÉNERO ---
@@ -470,15 +532,6 @@ async function connectToWhatsApp() {
             await usersCollection.updateOne({ jid: proponte }, { $set: { pareja: sender } }, { upsert: true });
             propuestasMatrimonio.delete(sender);
             return await sock.sendMessage(from, { text: `🎉 ¡VIVA LOS NOVIOS! @${proponte.split('@')[0]} y @${sender.split('@')[0]} están casados. 💍`, mentions: [sender, proponte] }, { quoted: m });
-        }
-
-        // --- PERFIL ---
-        if (command === 'perfil' || command === 'verfoto') {
-            const target = m.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0] || m.message.extendedTextMessage?.contextInfo?.participant || sender;
-            try {
-                const url = await sock.profilePictureUrl(target, 'image').catch(() => 'https://i.imgur.com/7A2b2nP.jpeg');
-                await sock.sendMessage(from, { image: { url }, caption: `📸 Foto de perfil de @${target.split('@')[0]}`, mentions: [target] }, { quoted: m });
-            } catch { await sock.sendMessage(from, { text: '❌ No se pudo obtener la foto.' }, { quoted: m }); }
         }
 
         // --- INTELIGENCIA ARTIFICIAL (GEMINI) ---
@@ -517,7 +570,7 @@ async function connectToWhatsApp() {
             return await sock.sendMessage(from, { text: `El resultado es: ${Math.random() < 0.5 ? '🪙 *Cara* 🎉' : '🪙 *Cruz* 🦅'}` }, { quoted: m });
         }
 
-        // --- MODERACIÓN DE GRUPO ---
+        // --- CONFIGURACIÓN DE GRUPO ---
         if (command === 'setwelcome' || command === 'setgoodbye') {
             if (!from.endsWith('@g.us')) return await sock.sendMessage(from, { text: '⚠️ Solo en grupos.' }, { quoted: m });
             const meta = await sock.groupMetadata(from);
@@ -542,30 +595,23 @@ async function connectToWhatsApp() {
             } else { await sock.sendMessage(from, { text: 'ℹ️ El usuario no tiene timeout activo.' }, { quoted: m }); }
         }
 
-        // --- MULTIMEDIA & STICKERS (SOPORTE PARA IMÁGENES NORMALES Y VIEW ONCE) ---
+        // --- MULTIMEDIA & STICKERS ---
         if (command === 's' || command === 'sticker') {
             const q = m.message.extendedTextMessage?.contextInfo?.quotedMessage;
-            
-            // Detección mejorada de imágenes normales y mensajes citados
             const isImage = messageType === 'imageMessage' || q?.imageMessage;
             const isViewOnce = messageType === 'viewOnceMessage' || messageType === 'viewOnceMessageV2' || q?.viewOnceMessage || q?.viewOnceMessageV2;
 
             if (!isImage && !isViewOnce) {
-                return await sock.sendMessage(from, { text: '⚠️ Envía o responde a una imagen (o foto de una sola vez) para convertirla en sticker.' }, { quoted: m });
+                return await sock.sendMessage(from, { text: '⚠️ Envía o responde a una imagen para convertirla en sticker.' }, { quoted: m });
             }
 
             try {
-                let targetMsg = m;
-                if (q) {
-                    targetMsg = { message: q };
-                }
-
+                const targetMsg = q ? { message: q } : m;
                 const buf = await downloadMediaMessage(targetMsg, 'buffer', {}, { logger: pino({ level: 'silent' }) });
                 const sticker = await sharp(buf).resize(512, 512, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } }).webp({ quality: 80 }).toBuffer();
                 await sock.sendMessage(from, { sticker }, { quoted: m });
-            } catch (err) {
-                console.error('Error procesando sticker:', err);
-                await sock.sendMessage(from, { text: '❌ No se pudo procesar la imagen (Nota: WhatsApp restringe descargas directas de algunas fotos cifradas de "Ver una vez" por seguridad).' }, { quoted: m });
+            } catch {
+                await sock.sendMessage(from, { text: '❌ No se pudo procesar la imagen.' }, { quoted: m });
             }
         }
 
