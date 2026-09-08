@@ -1,15 +1,19 @@
 const { default: makeWASocket, DisconnectReason, downloadMediaMessage, initAuthCreds, BufferJSON } = require('@whiskeysockets/baileys');
 const pino = require('pino');
-const http = require('http');
+const http = http = require('http');
 const { MongoClient } = require('mongodb');
 const sharp = require('sharp');
 const axios = require('axios');
+const ffmpeg = require('fluent-ffmpeg');
+const ffmpegInstaller = require('ffmpeg-static');
+ffmpeg.setFfmpegPath(ffmpegInstaller);
+const { Readable } = require('stream');
 
 // Servidor HTTP para Render y mecanismo anti-inactividad (Auto-ping)
 const PORT = process.env.PORT || 3000;
 const server = http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('CocoBot optimizado 24/7 con Conteo de Cumpleaños!\n');
+    res.end('CocoBot optimizado 24/7 con Auto-depuración y Videos!\n');
 });
 
 server.listen(PORT, () => {
@@ -23,11 +27,11 @@ server.listen(PORT, () => {
 
 const cooldowns = new Map();
 
-// Adaptador de sesión en MongoDB Atlas
+// Adaptador de sesión en MongoDB Atlas con purga automática para ahorrar espacio gratuito
 async function useMongoDBAuthState(collection) {
     const writeData = async (data, id) => {
         const json = JSON.stringify(data, BufferJSON.replacer);
-        await collection.updateOne({ _id: id }, { $set: { data: json } }, { upsert: true });
+        await collection.updateOne({ _id: id }, { $set: { data: json, updatedAt: new Date() } }, { upsert: true });
     };
 
     const readData = async (id) => {
@@ -43,6 +47,15 @@ async function useMongoDBAuthState(collection) {
     const removeData = async (id) => {
         try { await collection.deleteOne({ _id: id }); } catch (error) {}
     };
+
+    // Auto-depuración: Elimina claves de sesión basura o antiguas que pesen más de 7 días sin actualizarse
+    try {
+        const sieteDiasAtras = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+        await collection.deleteMany({ 
+            updatedAt: { $lt: sieteDiasAtras }, 
+            _id: { $ne: 'creds' } // Protege las credenciales principales de inicio de sesión
+        });
+    } catch (e) {}
 
     const creds = (await readData('creds')) || (initAuthCreds(), await writeData(initAuthCreds(), 'creds'), initAuthCreds());
 
@@ -76,26 +89,52 @@ async function useMongoDBAuthState(collection) {
     };
 }
 
-// Función auxiliar para calcular días restantes hasta el próximo cumpleaños en hora de Perú
+// Función auxiliar para convertir video a sticker animado usando ffmpeg-static
+async function convertirVideoAStickerAnimado(videoBuffer) {
+    return new Promise((resolve, reject) => {
+        const inputStream = Readable.from(videoBuffer);
+        const chunks = [];
+
+        ffmpeg(inputStream)
+            .inputFormat('mp4')
+            .fps(15)
+            .size('512x512')
+            .outputFormat('webp')
+            .videoCodec('libwebp')
+            .outputOptions([
+                '-lossless 0',
+                '-q:v 50',
+                '-loop 0',
+                '-preset default',
+                '-an',
+                '-vsync 0'
+            ])
+            .on('error', (err) => reject(err))
+            .on('end', () => {
+                resolve(Buffer.concat(chunks));
+            })
+            .pipe()
+            .on('data', (chunk) => chunks.push(chunk));
+    });
+}
+
+// Función para calcular días faltantes en hora de Perú
 function calcularDiasFaltantes(fechaStr) {
     if (!fechaStr) return 999;
     const [dia, mes] = fechaStr.split('/').map(Number);
 
-    // Obtener fecha actual en Perú
     const ahoraStr = new Date().toLocaleString("en-US", { timeZone: "America/Lima" });
     const hoyPeru = new Date(ahoraStr);
     
     let anioActual = hoyPeru.getFullYear();
     let proximoCumple = new Date(anioActual, mes - 1, dia);
 
-    // Si ya pasó este año, el próximo cumpleaños será el año siguiente
     if (proximoCumple < hoyPeru && (proximoCumple.getMonth() !== hoyPeru.getMonth() || proximoCumple.getDate() !== hoyPeru.getDate())) {
         proximoCumple.setFullYear(anioActual + 1);
     }
 
     const diferenciaMs = proximoCumple - hoyPeru;
-    const diasFaltantes = Math.ceil(diferenciaMs / (1000 * 60 * 60 * 24));
-    return diasFaltantes;
+    return Math.ceil(diferenciaMs / (1000 * 60 * 60 * 24));
 }
 
 async function connectToWhatsApp() {
@@ -105,7 +144,7 @@ async function connectToWhatsApp() {
     const sessionCollection = db.collection('session');
     const usersCollection = db.collection('users');
     
-    console.log('📦 Conectado a MongoDB Atlas exitosamente');
+    console.log('📦 Conectado a MongoDB Atlas (con auto-depuración activa)');
 
     const { state, saveCreds } = await useMongoDBAuthState(sessionCollection);
 
@@ -181,22 +220,23 @@ async function connectToWhatsApp() {
 `⚡ *PANEL PRINCIPAL - CocoBot* ⚡
 ────────────────────────
 👤 *Creado por:* Alencito
-🚀 *Estado:* Online 24/7
+🚀 *Estado:* Online 24/7 (Optimizado Gratis)
 ────────────────────────
  
 📌 *COMANDOS DISPONIBLES:*
 
-✨ *Utilidades y Stickers*
-> '#s' - Convierte imagen en sticker
+✨ *Stickers y Videos*
+> '#s' - Imagen a sticker
+> '#gif' o '#tovideo' - Video a sticker animado
 > '#toimg' - Sticker a imagen
 > '#del' - Borra mensaje citado
 
-🎂 *Cumpleaños*
-> '#cumple DD/MM' - Guarda tu fecha de cumpleaños.
-> '#cumples' - Muestra la lista y días faltantes.
+🎂 *Cumpleaños (Permanentes)*
+> '#cumple DD/MM' - Guarda tu fecha.
+> '#cumples' - Lista y días faltantes.
 
 📢 *Administración (Privado)*
-> '#anuncio [texto]' - Envía comunicado oficial (Alencito)
+> '#anuncio [texto]' - Comunicado oficial (Alencito)
 
 🪙 *Economía & 🎉 Diversión*
 > '#bal', '#work', '#daily'
@@ -215,7 +255,7 @@ async function connectToWhatsApp() {
             }
 
             await usersCollection.updateOne({ jid: sender }, { $set: { cumple: fecha } }, { upsert: true });
-            await sock.sendMessage(from, { text: `✅ ¡Listo! Tu cumpleaños el *${fecha}* ha sido guardado.` }, { quoted: m });
+            await sock.sendMessage(from, { text: `✅ ¡Listo! Tu cumpleaños el *${fecha}* ha sido guardado de forma permanente.` }, { quoted: m });
         }
 
         if (command === 'cumples' || command === 'listarcumples') {
@@ -264,8 +304,32 @@ async function connectToWhatsApp() {
             }
         }
 
+        // Conversión de Video a Sticker Animado con ffmpeg-static
         if (command === 'tovideo' || command === 'vidtosgif' || command === 'gif') {
-            await sock.sendMessage(from, { text: '⚠️ La conversión directa de videos a sticker animado requiere FFmpeg no disponible en este servidor gratuito. Envía un GIF o imagen.' }, { quoted: m });
+            const quotedMessage = m.message.extendedTextMessage?.contextInfo?.quotedMessage;
+            const isVideo = messageType === 'videoMessage';
+            const isQuotedVideo = quotedMessage && quotedMessage.videoMessage;
+
+            if (!isVideo && !isQuotedVideo) {
+                return await sock.sendMessage(from, { text: '⚠️ Adjunta un video o responde a uno con *#gif*.' }, { quoted: m });
+            }
+
+            try {
+                await sock.sendMessage(from, { text: '⏳ Convirtiendo video a sticker animado...' }, { quoted: m });
+                const mediaMsg = isVideo ? m : { message: quotedMessage };
+                
+                const buffer = await downloadMediaMessage(mediaMsg, 'buffer', {}, { logger: pino({ level: 'silent' }) });
+
+                if (buffer.length > 6 * 1024 * 1024) {
+                    return await sock.sendMessage(from, { text: '❌ El video es demasiado grande. Envía uno menor a 6 MB.' }, { quoted: m });
+                }
+
+                const stickerBuffer = await convertirVideoAStickerAnimado(buffer);
+                await sock.sendMessage(from, { sticker: stickerBuffer }, { quoted: m });
+            } catch (error) {
+                console.error('Error al convertir video:', error);
+                await sock.sendMessage(from, { text: '❌ Ocurrió un error al procesar el video. Intenta con uno más corto.' }, { quoted: m });
+            }
         }
 
         // ToImg
