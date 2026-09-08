@@ -2,14 +2,30 @@ const { default: makeWASocket, DisconnectReason, downloadMediaMessage, initAuthC
 const pino = require('pino');
 const http = require('http');
 const { MongoClient } = require('mongodb');
-const sharp = require('sharp'); // Usaremos sharp para convertir a webp perfectamente
+const sharp = require('sharp');
 
-// Servidor HTTP para Render y UptimeRobot
+// Servidor HTTP para Render y mecanismo anti-inactividad (Auto-ping)
 const PORT = process.env.PORT || 3000;
-http.createServer((req, res) => {
+const server = http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('Bot activo 24/7 con MongoDB y Sharp!\n');
-}).listen(PORT);
+    res.end('Bot activo 24/7 con MongoDB, Sharp y Cooldown!\n');
+});
+
+server.listen(PORT, () => {
+    console.log(`🌐 Servidor HTTP corriendo en el puerto ${PORT}`);
+    
+    setInterval(() => {
+        const appUrl = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
+        http.get(appUrl, (res) => {
+            console.log(`🔄 Auto-ping ejecutado. Código de estado: ${res.statusCode}`);
+        }).on('error', (err) => {
+            console.error('⚠️ Error en el auto-ping:', err.message);
+        });
+    }, 10 * 60 * 1000);
+});
+
+// Memoria temporal para los Cooldowns en grupos y chats privados
+const cooldowns = new Map();
 
 // Adaptador de sesión en MongoDB Atlas
 async function useMongoDBAuthState(collection) {
@@ -136,6 +152,24 @@ async function connectToWhatsApp() {
         const args = body.slice(prefix.length).trim().split(/ +/);
         const command = args.shift().toLowerCase();
 
+        // Control de Cooldown anti-spam para comandos de economía en grupos
+        if (['work', 'w', 'daily'].includes(command)) {
+            const cooldownTime = command === 'daily' ? 24 * 60 * 60 * 1000 : 30 * 1000; // 30 segundos para work, 24 horas para daily
+            const userCooldownKey = `${sender}-${command}`;
+            const lastTime = cooldowns.get(userCooldownKey) || 0;
+            const now = Date.now();
+
+            if (now - lastTime < cooldownTime) {
+                const timeLeft = Math.ceil((cooldownTime - (now - lastTime)) / 1000);
+                const timeMessage = command === 'daily' 
+                    ? '⏳ Ya reclamaste tu recompensa diaria. Vuelve mañana.' 
+                    : `⏳ Debes esperar *${timeLeft} segundos* antes de volver a usar #${command}.`;
+                
+                return await sock.sendMessage(from, { text: timeMessage }, { quoted: m });
+            }
+            cooldowns.set(userCooldownKey, now);
+        }
+
         // 1. Comando #ping
         if (command === 'ping' || command === 'p') {
             await sock.sendMessage(from, { text: '¡Pong! 🏓 Bot activo y en línea.' }, { quoted: m });
@@ -144,9 +178,11 @@ async function connectToWhatsApp() {
         // 2. Comando #menu
         if (command === 'menu' || command === 'help' || command === 'commands') {
             const menuText = 
-`╭━━━ 🤖 *COCOBOT New Version* ━━━
-┃ ✐ *Desarrollado por tu marido*
-╰━━━━━━━━━━━━━━━━━━━
+`⚡ *PANEL PRINCIPAL - JOKO BOT* ⚡
+────────────────────────
+👤 *Creado por:* Joko
+🚀 *Estado:* Online 24/7
+────────────────────────
  
 📌 *COMANDOS DISPONIBLES:*
 
@@ -155,7 +191,7 @@ async function connectToWhatsApp() {
 
 🪙 *Economía*
 > '#bal' - Revisa tus coins actuales.
-> '#work' - Trabaja para ganar coins.
+> '#work' - Trabaja para ganar coins (Cooldown: 30s).
 > '#daily' - Reclama tu recompensa diaria.
 
 🎉 *Interacción y Diversión*
@@ -184,7 +220,6 @@ async function connectToWhatsApp() {
                 const mediaMsg = isMedia ? m : { message: quotedMessage };
                 const buffer = await downloadMediaMessage(mediaMsg, 'buffer', {}, { logger: pino({ level: 'silent' }) });
 
-                // Procesamiento de imagen a sticker WebP con Sharp (nativo)
                 const stickerBuffer = await sharp(buffer)
                     .resize(512, 512, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
                     .webp({ quality: 80 })
