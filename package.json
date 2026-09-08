@@ -8,6 +8,7 @@
   "dependencies": {
     "@whiskeysockets/baileys": "^6.7.12",
     "pino": "^9.0.0",
+    "mongodb": "^6.3.0",
     "wa-sticker-formatter": "^1.2.0"
   },
   "engines": {
