@@ -1,6 +1,6 @@
 const { default: makeWASocket, DisconnectReason, downloadMediaMessage, initAuthCreds, BufferJSON } = require('@whiskeysockets/baileys');
 const pino = require('pino');
-const http = require('http');
+const http = http = require('http');
 const { MongoClient } = require('mongodb');
 const { Sticker } = require('wa-sticker-formatter');
 
@@ -60,7 +60,7 @@ async function useMongoDBAuthState(collection) {
                 }
             }
         },
-        saveCreds: () => writeData(state.creds, 'creds')
+        saveCreds: () => writeData(creds, 'creds') // Corregido para usar 'creds' directamente
     };
 }
 
@@ -71,7 +71,7 @@ async function connectToWhatsApp() {
     const sessionCollection = db.collection('session');
     const usersCollection = db.collection('users');
     
-    console.log('📦 Conectado exitosamente à MongoDB Atlas');
+    console.log('📦 Conectado exitosamente a MongoDB Atlas');
 
     const { state, saveCreds } = await useMongoDBAuthState(sessionCollection);
 
