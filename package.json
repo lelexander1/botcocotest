@@ -1,7 +1,7 @@
 {
   "name": "cocobot-whatsapp",
   "version": "1.0.0",
-  "description": "Bot de WhatsApp multifuncional con Gemini IA, MongoDB y Render",
+  "description": "Bot de WhatsApp multifuncional con Gemini IA, MongoDB y Renders",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
