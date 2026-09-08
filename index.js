@@ -204,26 +204,42 @@ async function connectToWhatsApp() {
         const sender = m.key.participant || from;
         const messageType = Object.keys(m.message)[0];
 
-        // --- ANTISPAM STICKERS & TIMEOUT ---
+        // --- SISTEMA ANTISPAM DE STICKERS (ESTRICTO Y ACUMULATIVO) ---
         if (from.endsWith('@g.us') && messageType === 'stickerMessage') {
             const ahora = Date.now();
-            if (stickerTimeouts.has(sender) && ahora < stickerTimeouts.get(sender)) {
-                try { await sock.sendMessage(from, { delete: m.key }); } catch {}
-                return;
-            } else if (stickerTimeouts.has(sender)) { stickerTimeouts.delete(sender); }
 
-            let tracker = stickerSpamTracker.get(sender) || { count: 0, firstTime: ahora };
-            if (ahora - tracker.firstTime < 8000) {
-                tracker.count++;
-                if (tracker.count >= 5) {
-                    stickerTimeouts.set(sender, ahora + 120000);
-                    stickerSpamTracker.delete(sender);
-                    await sock.sendMessage(from, { text: `⚠️ @${sender.split('@')[0]} recibió un *timeout de 2 minutos* sin poder enviar stickers por spam. 🛑`, mentions: [sender] });
+            // 1. Validar si el usuario ya está en timeout
+            if (stickerTimeouts.has(sender)) {
+                const tiempoFin = stickerTimeouts.get(sender);
+                if (ahora < tiempoFin) {
                     try { await sock.sendMessage(from, { delete: m.key }); } catch {}
                     return;
+                } else {
+                    stickerTimeouts.delete(sender);
                 }
-            } else { tracker = { count: 1, firstTime: ahora }; }
-            stickerSpamTracker.set(sender, tracker);
+            }
+
+            // 2. Historial acumulativo estricto de stickers por usuario
+            let tracker = stickerSpamTracker.get(sender) || { count: 0 };
+            tracker.count++;
+
+            if (tracker.count >= 5) {
+                // Al llegar a 5 stickers acumulados, se aplica el timeout de 2 minutos
+                stickerTimeouts.set(sender, ahora + 120000);
+                stickerSpamTracker.set(sender, { count: 0 }); // Reiniciar contador
+
+                await sock.sendMessage(from, { 
+                    text: `⚠️ @${sender.split('@')[0]} ha acumulado demasiados stickers y recibió un *timeout de 2 minutos*. 🛑\n(Un administrador puede usar *#untimeout @usuario* para liberarlo).`, 
+                    mentions: [sender] 
+                });
+
+                try { await sock.sendMessage(from, { delete: m.key }); } catch {}
+                return;
+            } else {
+                stickerSpamTracker.set(sender, tracker);
+                // Borra también el mensaje actual para mantener estricto el límite
+                try { await sock.sendMessage(from, { delete: m.key }); } catch {}
+            }
         }
 
         let body = m.message.imageMessage?.caption || m.message.videoMessage?.caption || m.message.extendedTextMessage?.text || m.message.conversation || '';
