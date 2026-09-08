@@ -343,9 +343,9 @@ async function connectToWhatsApp() {
             try {
                 await sock.sendMessage(from, { text: '🤖 Pensando respuesta...' }, { quoted: m });
 
-                // Llamada oficial a la API de Gemini (modelo gemini-2.5-flash)
+                // Llamada oficial a la API de Gemini (modelo actualizado)
                 const response = await ai.models.generateContent({
-                    model: 'gemini-2.5-flash',
+                    model: 'gemini-3.6-flash',
                     contents: promptTexto,
                 });
                 
