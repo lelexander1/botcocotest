@@ -1,14 +1,14 @@
 const { default: makeWASocket, DisconnectReason, downloadMediaMessage, initAuthCreds, BufferJSON } = require('@whiskeysockets/baileys');
 const pino = require('pino');
-const http = require('http'); // Corregido
+const http = require('http');
 const { MongoClient } = require('mongodb');
-const { Sticker } = require('wa-sticker-formatter');
+const sharp = require('sharp'); // Usaremos sharp para convertir a webp perfectamente
 
 // Servidor HTTP para Render y UptimeRobot
 const PORT = process.env.PORT || 3000;
 http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('Bot activo 24/7 con MongoDB y más opciones!\n');
+    res.end('Bot activo 24/7 con MongoDB y Sharp!\n');
 }).listen(PORT);
 
 // Adaptador de sesión en MongoDB Atlas
@@ -169,7 +169,7 @@ async function connectToWhatsApp() {
             await sock.sendMessage(from, { text: menuText }, { quoted: m });
         }
 
-        // 3. Comando de Stickers (#s)
+        // 3. Comando de Stickers (#s) con Sharp
         if (command === 's' || command === 'sticker') {
             const quotedMessage = m.message.extendedTextMessage?.contextInfo?.quotedMessage;
             const isMedia = messageType === 'imageMessage' || messageType === 'videoMessage';
@@ -184,14 +184,12 @@ async function connectToWhatsApp() {
                 const mediaMsg = isMedia ? m : { message: quotedMessage };
                 const buffer = await downloadMediaMessage(mediaMsg, 'buffer', {}, { logger: pino({ level: 'silent' }) });
 
-                const sticker = new Sticker(buffer, {
-                    pack: 'Cocobot (Prem-Bot)',
-                    author: 'LightningNeko',
-                    type: 'full',
-                    quality: 50
-                });
+                // Procesamiento de imagen a sticker WebP con Sharp (nativo)
+                const stickerBuffer = await sharp(buffer)
+                    .resize(512, 512, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+                    .webp({ quality: 80 })
+                    .toBuffer();
 
-                const stickerBuffer = await sticker.build();
                 await sock.sendMessage(from, { sticker: stickerBuffer }, { quoted: m });
             } catch (error) {
                 console.error('Error al crear el sticker:', error);
