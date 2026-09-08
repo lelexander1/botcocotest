@@ -3,13 +3,13 @@ const pino = require('pino');
 const http = require('http');
 const { MongoClient } = require('mongodb');
 const sharp = require('sharp');
-const axios = require('axios'); // Asegúrate de tener axios instalado o usa fetch nativo
+const axios = require('axios');
 
 // Servidor HTTP para Render y mecanismo anti-inactividad (Auto-ping)
 const PORT = process.env.PORT || 3000;
 const server = http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('CocoBot optimizado 24/7!\n');
+    res.end('CocoBot optimizado 24/7 con Videos, Cumpleaños y Anuncios!\n');
 });
 
 server.listen(PORT, () => {
@@ -17,15 +17,13 @@ server.listen(PORT, () => {
     
     setInterval(() => {
         const appUrl = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
-        http.get(appUrl, (res) => {
-            // Logs limpios para no saturar Render
-        }).on('error', (err) => {});
+        http.get(appUrl, (res) => {}).on('error', (err) => {});
     }, 10 * 60 * 1000);
 });
 
 const cooldowns = new Map();
 
-// Adaptador de sesión en MongoDB Atlas optimizado
+// Adaptador de sesión en MongoDB Atlas
 async function useMongoDBAuthState(collection) {
     const writeData = async (data, id) => {
         const json = JSON.stringify(data, BufferJSON.replacer);
@@ -85,7 +83,7 @@ async function connectToWhatsApp() {
     const sessionCollection = db.collection('session');
     const usersCollection = db.collection('users');
     
-    console.log('📦 Conectado a MongoDB Atlas de forma eficiente');
+    console.log('📦 Conectado a MongoDB Atlas exitosamente');
 
     const { state, saveCreds } = await useMongoDBAuthState(sessionCollection);
 
@@ -112,7 +110,10 @@ async function connectToWhatsApp() {
             const shouldReconnect = (lastDisconnect?.error)?.output?.statusCode !== DisconnectReason.loggedOut;
             if (shouldReconnect) connectToWhatsApp();
         } else if (connection === 'open') {
-            console.log('¡CocoBot conectado exitosamente!');
+            console.log('¡CocoBot conectado y listo!');
+            
+            // Iniciar tarea automática de medianoche en hora de Perú
+            iniciarVerificadorCumpleaños(sock, usersCollection);
         }
     });
 
@@ -137,7 +138,7 @@ async function connectToWhatsApp() {
         const args = body.slice(prefix.length).trim().split(/ +/);
         const command = args.shift().toLowerCase();
 
-        // Control de Cooldown
+        // Cooldown economía
         if (['work', 'w', 'daily'].includes(command)) {
             const cooldownTime = command === 'daily' ? 24 * 60 * 60 * 1000 : 30 * 1000;
             const userCooldownKey = `${sender}-${command}`;
@@ -146,11 +147,7 @@ async function connectToWhatsApp() {
 
             if (now - lastTime < cooldownTime) {
                 const timeLeft = Math.ceil((cooldownTime - (now - lastTime)) / 1000);
-                const timeMessage = command === 'daily' 
-                    ? '⏳ Ya reclamaste tu recompensa diaria. Vuelve mañana.' 
-                    : `⏳ Espera *${timeLeft}s* para usar #${command}.`;
-                
-                return await sock.sendMessage(from, { text: timeMessage }, { quoted: m });
+                return await sock.sendMessage(from, { text: `⏳ Espera *${timeLeft}s* para usar #${command}.` }, { quoted: m });
             }
             cooldowns.set(userCooldownKey, now);
         }
@@ -168,20 +165,68 @@ async function connectToWhatsApp() {
 ────────────────────────
  
 📌 *COMANDOS DISPONIBLES:*
-✨ '#s' - Crear sticker
+
+✨ *Utilidades, Stickers y Videos*
+> '#s' - Convierte imagen en sticker
 > '#toimg' - Sticker a imagen
-📢 '#anuncio' - Enviar comunicado
-🪙 '#bal' / '#work' / '#daily' - Economía
-🎉 '#hug' / '#kiss' / '#slap' - Interacción`;
+> '#gif' o '#tovideo' - Convierte video a sticker animado
+> '#del' - Borra mensaje citado
+
+🎂 *Cumpleaños*
+> '#cumple DD/MM' - Guarda tu fecha de cumpleaños.
+> '#cumples' - Muestra la lista de cumpleaños registrados.
+
+📢 *Administración (Privado)*
+> '#anuncio [texto]' - Envía comunicado oficial (Alencito)
+
+🪙 *Economía & 🎉 Diversión*
+> '#bal', '#work', '#daily'
+> '#hug', '#kiss', '#slap' [@usuario]`;
 
             await sock.sendMessage(from, { text: menuText }, { quoted: m });
         }
 
-        // Stickers
+        // --- SISTEMA DE CUMPLEAÑOS ---
+        if (command === 'cumple' || command === 'cumpleaños') {
+            const fecha = args[0];
+            const regexFecha = /^([0-2][0-9]|3[0-1])\/(0[1-9]|1[0-2])$/;
+
+            if (!fecha || !regexFecha.test(fecha)) {
+                return await sock.sendMessage(from, { text: '⚠️ Formato incorrecto. Debes usar el formato *DD/MM* (Ejemplo: *#cumple 25/08*).' }, { quoted: m });
+            }
+
+            await usersCollection.updateOne(
+                { jid: sender }, 
+                { $set: { cumple: fecha } }, 
+                { upsert: true }
+            );
+
+            await sock.sendMessage(from, { text: `✅ ¡Listo! Tu cumpleaños el *${fecha}* ha sido guardado correctamente.` }, { quoted: m });
+        }
+
+        if (command === 'cumples' || command === 'listarcumples') {
+            const allUsers = await usersCollection.find({ cumple: { $exists: true } }).toArray();
+
+            if (allUsers.length === 0) {
+                return await sock.sendMessage(from, { text: '📅 Aún no hay cumpleaños registrados. Usa *#cumple DD/MM* para registrar el tuyo.' }, { quoted: m });
+            }
+
+            let textoLista = '🎂 *LISTA DE CUMPLEAÑOS REGISTRADOS* 🎂\n\n';
+            allUsers.forEach((user, index) => {
+                const tagUser = user.jid.split('@')[0];
+                textoLista += `${index + 1}. @${tagUser} ➡️ *${user.cumple}*\n`;
+            });
+
+            const mentions = allUsers.map(u => u.jid);
+            await sock.sendMessage(from, { text: textoLista, mentions }, { quoted: m });
+        }
+        // ------------------------------
+
+        // Stickers de Imágenes
         if (command === 's' || command === 'sticker') {
             const quotedMessage = m.message.extendedTextMessage?.contextInfo?.quotedMessage;
-            const isMedia = messageType === 'imageMessage' || messageType === 'videoMessage';
-            const isQuotedMedia = quotedMessage && (quotedMessage.imageMessage || quotedMessage.videoMessage);
+            const isMedia = messageType === 'imageMessage';
+            const isQuotedMedia = quotedMessage && quotedMessage.imageMessage;
 
             if (!isMedia && !isQuotedMedia) return;
 
@@ -197,6 +242,40 @@ async function connectToWhatsApp() {
             } catch (error) {}
         }
 
+        // Conversión de Video a Sticker Animado con validación de tamaño
+        if (command === 'tovideo' || command === 'vidtosgif' || command === 'gif') {
+            const quotedMessage = m.message.extendedTextMessage?.contextInfo?.quotedMessage;
+            const isVideo = messageType === 'videoMessage';
+            const isQuotedVideo = quotedMessage && quotedMessage.videoMessage;
+
+            if (!isVideo && !isQuotedVideo) {
+                return await sock.sendMessage(from, { text: '⚠️ Por favor, adjunta un video o responde a uno con el comando *#gif*.' }, { quoted: m });
+            }
+
+            try {
+                await sock.sendMessage(from, { text: '⏳ Procesando video...' }, { quoted: m });
+                const mediaMsg = isVideo ? m : { message: quotedMessage };
+                
+                const buffer = await downloadMediaMessage(mediaMsg, 'buffer', {}, { logger: pino({ level: 'silent' }) });
+
+                // Límite de seguridad: 8 MB máximo para proteger la memoria de Render
+                const maxSizeInBytes = 8 * 1024 * 1024; 
+                if (buffer.length > maxSizeInBytes) {
+                    return await sock.sendMessage(from, { text: '❌ El video es demasiado grande. Por favor, envía un video que pese menos de 8 MB para evitar errores de memoria.' }, { quoted: m });
+                }
+
+                const stickerBuffer = await sharp(buffer, { animated: true })
+                    .resize(512, 512, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+                    .webp({ quality: 50, effort: 2 })
+                    .toBuffer();
+
+                await sock.sendMessage(from, { sticker: stickerBuffer }, { quoted: m });
+            } catch (error) {
+                console.error('Error al procesar el video:', error);
+                await sock.sendMessage(from, { text: '❌ Ocurrió un error al convertir el video. Es posible que el formato no sea compatible.' }, { quoted: m });
+            }
+        }
+
         // ToImg
         if (command === 'toimg' || command === 'img') {
             const quotedMessage = m.message.extendedTextMessage?.contextInfo?.quotedMessage;
@@ -207,6 +286,20 @@ async function connectToWhatsApp() {
                 const imageBuffer = await sharp(buffer).png().toBuffer();
                 await sock.sendMessage(from, { image: imageBuffer, caption: '✨ Convertido a imagen.' }, { quoted: m });
             } catch (error) {}
+        }
+
+        // Borrar mensaje (#del)
+        if (command === 'del' || command === 'delete') {
+            const contextInfo = m.message.extendedTextMessage?.contextInfo;
+            if (!contextInfo || !contextInfo.stanzaId) {
+                return await sock.sendMessage(from, { text: '⚠️ Responde al mensaje que deseas eliminar con *#del*.' }, { quoted: m });
+            }
+
+            try {
+                await sock.sendMessage(from, { delete: { remoteJid: from, id: contextInfo.stanzaId, participant: contextInfo.participant || m.key.participant } });
+            } catch (error) {
+                await sock.sendMessage(from, { text: '❌ Asegúrate de que el bot sea *Administrador*.' }, { quoted: m });
+            }
         }
 
         // Anuncio
@@ -248,26 +341,23 @@ async function connectToWhatsApp() {
             await sock.sendMessage(from, { text: `🎉 ¡Reclamaste *🪙 2000 coins*!` }, { quoted: m });
         }
 
-        // Interacciones con Giphy API (o respaldos directos seguros)
+        // Interacciones GIF Animado
         if (['hug', 'kiss', 'slap'].includes(command)) {
             const target = m.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0];
             if (!target) return await sock.sendMessage(from, { text: '⚠️ Menciona a alguien.' }, { quoted: m });
 
             let mediaUrl = '';
             try {
-                // Si tienes configurada tu API Key de Giphy gratuita en Render:
                 const apiKey = process.env.GIPHY_API_KEY;
                 if (apiKey) {
                     const res = await axios.get(`https://api.giphy.com/v1/gifs/search?api_key=${apiKey}&q=${command}&limit=10&rating=g`);
                     const gifs = res.data.data;
                     if (gifs.length > 0) {
-                        const randomGif = gifs[Math.floor(Math.random() * gifs.length)];
-                        mediaUrl = randomGif.images.original.url;
+                        mediaUrl = gifs[Math.floor(Math.random() * gifs.length)].images.downsized_medium.url;
                     }
                 }
             } catch (e) {}
 
-            // Lista de respaldo fija por si no usas API Key de Giphy
             const backups = {
                 hug: 'https://media.giphy.com/media/od5H3PmEG5EVq/giphy.gif',
                 kiss: 'https://media.giphy.com/media/G3va31oEEnIkM/giphy.gif',
@@ -276,14 +366,67 @@ async function connectToWhatsApp() {
 
             const finalMedia = mediaUrl || backups[command];
             const actionsText = { hug: 'un abrazo 🫂', kiss: 'un beso 💋', slap: 'una bofetada 👋' };
+            const captionText = `@${sender.split('@')[0]} le dio ${actionsText[command]} @${target.split('@')[0]}! ✨`;
 
-            await sock.sendMessage(from, { 
-                image: { url: finalMedia }, 
-                caption: `@${sender.split('@')[0]} le dio ${actionsText[command]} a @${target.split('@')[0]}! ✨`, 
-                mentions: [sender, target] 
-            }, { quoted: m });
+            try {
+                const response = await axios.get(finalMedia, { responseType: 'arraybuffer' });
+                const stickerBuffer = await sharp(Buffer.from(response.data), { animated: true })
+                    .resize(512, 512, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+                    .webp({ quality: 50, effort: 2 })
+                    .toBuffer();
+
+                await sock.sendMessage(from, { text: captionText, mentions: [sender, target] }, { quoted: m });
+                await sock.sendMessage(from, { sticker: stickerBuffer });
+            } catch (error) {
+                await sock.sendMessage(from, { text: captionText, mentions: [sender, target] }, { quoted: m });
+            }
         }
     });
+}
+
+// Verificador automático estrictamente en hora de Perú (America/Lima) a las 00:00
+function iniciarVerificadorCumpleaños(sock, usersCollection) {
+    const groupId = '120363422057355283@g.us'; 
+    let ultimoDiaFelicitado = ''; 
+
+    setInterval(async () => {
+        try {
+            const ahora = new Date();
+            const opcionesFecha = { timeZone: 'America/Lima', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false };
+            const formatter = new Intl.DateTimeFormat('es-PE', opcionesFecha);
+            const partes = formatter.formatToParts(ahora);
+            
+            let dia = '', mes = '', hora = '', minuto = '';
+            partes.forEach(p => {
+                if (p.type === 'day') dia = p.value;
+                if (p.type === 'month') mes = p.value;
+                if (p.type === 'hour') hora = p.value;
+                if (p.type === 'minute') minuto = p.value;
+            });
+
+            const fechaHoy = `${dia}/${mes}`;
+            const claveControl = `${fechaHoy}-${hora}:${minuto}`;
+
+            if (hora === '00' && minuto === '00' && ultimoDiaFelicitado !== claveControl) {
+                ultimoDiaFelicitado = claveControl;
+                const cumpleañeros = await usersCollection.find({ cumple: fechaHoy }).toArray();
+
+                if (cumpleañeros.length > 0) {
+                    for (let user of cumpleañeros) {
+                        const tagUser = user.jid.split('@')[0];
+                        const mensajeFelicitacion = `🎉 ¡MUY FELIZ CUMPLEAÑOS @${tagUser}! 🎂🥳\n\nDe parte de todos en el grupo te deseamos un día genial. ¡Que lo disfrutes al máximo! 🎁🎈`;
+                        
+                        await sock.sendMessage(groupId, { 
+                            text: mensajeFelicitacion, 
+                            mentions: [user.jid] 
+                        });
+                    }
+                }
+            }
+        } catch (err) {
+            console.error('Error en el verificador de cumpleaños:', err);
+        }
+    }, 30 * 1000); 
 }
 
 connectToWhatsApp();
