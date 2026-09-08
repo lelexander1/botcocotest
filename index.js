@@ -8,7 +8,7 @@ const sharp = require('sharp');
 const PORT = process.env.PORT || 3000;
 const server = http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('Bot activo 24/7 con MongoDB, Sharp, Cooldown y Anuncios!\n');
+    res.end('CocoBot activo 24/7 con MongoDB, Sharp, Cooldown y Anuncios!\n');
 });
 
 server.listen(PORT, () => {
@@ -178,7 +178,7 @@ async function connectToWhatsApp() {
 
         // 1. Comando #ping
         if (command === 'ping' || command === 'p') {
-            await sock.sendMessage(from, { text: '¡Pong! 🏓 Bot activo y en línea.' }, { quoted: m });
+            await sock.sendMessage(from, { text: '¡Pong! 🏓 CocoBot activo y en línea.' }, { quoted: m });
         }
 
         // 2. Comando #menu
@@ -205,9 +205,9 @@ async function connectToWhatsApp() {
 > '#daily' - Reclama tu recompensa diaria.
 
 🎉 *Interacción y Diversión*
-> '#hug' [@mención] - Dale un abrazo a alguien.
-> '#kiss' [@mención] - Dale un beso a alguien.
-> '#slap' [@mención] - Dale una bofetada a alguien.
+> '#hug' [@mención] - Dale un abrazo a alguien (con imagen).
+> '#kiss' [@mención] - Dale un beso a alguien (con imagen).
+> '#slap' [@mención] - Dale una bofetada a alguien (con imagen).
 
 🌐 *Sistema*
 > '#ping' - Mide el estado del bot.`;
@@ -267,28 +267,26 @@ async function connectToWhatsApp() {
             }
         }
 
-        // 5. Comando #anuncio (Solo para ti en chat privado)
+        // 5. Comando #anuncio (Validación optimizada para Alencito)
         if (command === 'anuncio' || command === 'broadcast') {
-            const tuNumeroJid = '51924876085@s.whatsapp.net'; 
-            const groupId = '120363422057355283@g.us'; // ID del grupo configurado limpiamente
+            const tuNumeroJid = '51924876085'; 
+            const groupId = '120363422057355283@g.us'; 
 
-            if (from.endsWith('@s.whatsapp.net')) {
-                if (sender !== tuNumeroJid) {
-                    return await sock.sendMessage(from, { text: '⚠️ No tienes permisos para usar este comando.' }, { quoted: m });
-                }
+            if (!sender.includes(tuNumeroJid)) {
+                return await sock.sendMessage(from, { text: '⚠️ No tienes permisos para usar este comando.' }, { quoted: m });
+            }
 
-                const anuncioTexto = args.join(' ');
-                if (!anuncioTexto) {
-                    return await sock.sendMessage(from, { text: '⚠️ Escribe el mensaje que deseas enviar al grupo (ej: #anuncio Hola a todos).' }, { quoted: m });
-                }
+            const anuncioTexto = args.join(' ');
+            if (!anuncioTexto) {
+                return await sock.sendMessage(from, { text: '⚠️ Escribe el mensaje que deseas enviar al grupo (ej: #anuncio Hola a todos).' }, { quoted: m });
+            }
 
-                try {
-                    await sock.sendMessage(groupId, { text: `📢 *ANUNCIO OFICIAL* 📢\n\n${anuncioTexto}` });
-                    await sock.sendMessage(from, { text: '✅ ¡Anuncio enviado al grupo correctamente!' }, { quoted: m });
-                } catch (error) {
-                    console.error('Error al enviar el anuncio:', error);
-                    await sock.sendMessage(from, { text: '❌ Ocurrió un error al enviar el anuncio al grupo.' }, { quoted: m });
-                }
+            try {
+                await sock.sendMessage(groupId, { text: `📢 *ANUNCIO OFICIAL* 📢\n\n${anuncioTexto}` });
+                await sock.sendMessage(from, { text: '✅ ¡Anuncio enviado al grupo correctamente!' }, { quoted: m });
+            } catch (error) {
+                console.error('Error al enviar el anuncio:', error);
+                await sock.sendMessage(from, { text: '❌ Ocurrió un error al enviar el anuncio al grupo.' }, { quoted: m });
             }
         }
 
@@ -332,21 +330,48 @@ async function connectToWhatsApp() {
             await sock.sendMessage(from, { text: `🎉 ¡Reclamaste tu recompensa diaria de *🪙 ${reward} coins*!` }, { quoted: m });
         }
 
-        // 9. Reacciones (#hug, #kiss, #slap)
+        // 9. Reacciones con imágenes aleatorias (#hug, #kiss, #slap)
         if (['hug', 'kiss', 'slap'].includes(command)) {
             const target = m.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0];
-            const actions = {
+            
+            if (!target) {
+                return await sock.sendMessage(from, { text: `⚠️ Debes mencionar a alguien para usar este comando (ej: #${command} @usuario).` }, { quoted: m });
+            }
+
+            // Listas de imágenes aleatorias seguras (GIFs/Imágenes temáticas de anime/reacciones)
+            const mediaList = {
+                hug: [
+                    'https://media.giphy.com/media/od5H3PmEG5EVq/giphy.gif',
+                    'https://media.giphy.com/media/IRUb7GTCaPU8E/giphy.gif',
+                    'https://media.giphy.com/media/wnsgren9NtITS/giphy.gif'
+                ],
+                kiss: [
+                    'https://media.giphy.com/media/G3va31oEEnIkM/giphy.gif',
+                    'https://media.giphy.com/media/wANk38K6Wp3wDri6rC/giphy.gif',
+                    'https://media.giphy.com/media/wQmXrcw3Qxrq8/giphy.gif'
+                ],
+                slap: [
+                    'https://media.giphy.com/media/Gf3AUz3eBNbTW/giphy.gif',
+                    'https://media.giphy.com/media/3oKZISG9A6iJ8RSwAU/giphy.gif',
+                    'https://media.giphy.com/media/xUPGcx4qh3aEPkMc1O/giphy.gif'
+                ]
+            };
+
+            const actionsText = {
                 hug: 'le dio un tierno abrazo 🫂 a',
                 kiss: 'le dio un apasionado beso 💋 a',
                 slap: 'le dio una fuerte bofetada 👋 a'
             };
 
-            if (!target) {
-                return await sock.sendMessage(from, { text: `⚠️ Debes mencionar a alguien para usar este comando (ej: #${command} @usuario).` }, { quoted: m });
-            }
+            // Seleccionar una imagen aleatoria de la lista correspondiente
+            const randomImage = mediaList[command][Math.floor(Math.random() * mediaList[command].length)];
+            const textResponse = `@${sender.split('@')[0]} ${actionsText[command]} @${target.split('@')[0]}! ✨`;
 
-            const textResponse = `@${sender.split('@')[0]} ${actions[command]} @${target.split('@')[0]}! ✨`;
-            await sock.sendMessage(from, { text: textResponse, mentions: [sender, target] }, { quoted: m });
+            await sock.sendMessage(from, { 
+                image: { url: randomImage }, 
+                caption: textResponse, 
+                mentions: [sender, target] 
+            }, { quoted: m });
         }
     });
 }
