@@ -262,22 +262,48 @@ async function connectToWhatsApp() {
         const sender = m.key.participant || from;
         const messageType = Object.keys(m.message)[0];
 
-        // --- SISTEMA ANTISPAM DE STICKERS CON TIMEOUT ---
+        // --- SISTEMA ANTISPAM DE STICKERS (VERSIÓN DEFINITIVA) ---
         if (from.endsWith('@g.us') && messageType === 'stickerMessage') {
             const ahora = Date.now();
 
-            // 1. Validar si el usuario ya está silenciado (en timeout) para enviar stickers
+            // 1. Validar si el usuario está en timeout
             if (stickerTimeouts.has(sender)) {
                 const tiempoFin = stickerTimeouts.get(sender);
                 if (ahora < tiempoFin) {
                     try {
-                        await sock.sendMessage(from, { delete: m.key }); // Borra el sticker inmediatamente
+                        await sock.sendMessage(from, { delete: m.key });
                     } catch (err) {}
-                    return; // Ignora por completo el mensaje
+                    return; 
                 } else {
-                    stickerTimeouts.delete(sender); // Expiró el timeout
+                    stickerTimeouts.delete(sender);
                 }
             }
+
+            // 2. Control de ráfaga: Si manda cualquier sticker rápido, cuenta para el antispam
+            if (!stickerSpamTracker.has(sender)) {
+                stickerSpamTracker.set(sender, { count: 1, firstTime: ahora });
+            } else {
+                let tracker = stickerSpamTracker.get(sender);
+                if (ahora - tracker.firstTime < 8000) { // Ventana de 8 segundos
+                    tracker.count++;
+                    if (tracker.count >= 5) { // Al 5to sticker consecutivo se aplica el timeout
+                        const tiempoTimeout = ahora + (2 * 60 * 1000); // 2 minutos de castigo
+                        stickerTimeouts.set(sender, tiempoTimeout);
+                        stickerSpamTracker.delete(sender);
+
+                        await sock.sendMessage(from, { 
+                            text: `⚠️ @${sender.split('@')[0]} ha recibido un *timeout de 2 minutos* sin poder enviar stickers por hacer spam. 🛑\n(Un administrador puede usar *#untimeout @usuario* para quitar el castigo).`, 
+                            mentions: [sender] 
+                        });
+
+                        try { await sock.sendMessage(from, { delete: m.key }); } catch (e) {}
+                        return;
+                    }
+                } else {
+                    stickerSpamTracker.set(sender, { count: 1, firstTime: ahora });
+                }
+            }
+        }
 
             // 2. Conteo de stickers enviados en ráfaga (ej: más de 5 stickers en menos de 6 segundos)
             if (!stickerSpamTracker.has(sender)) {
