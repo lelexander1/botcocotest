@@ -1,6 +1,6 @@
 const { default: makeWASocket, DisconnectReason, downloadMediaMessage, initAuthCreds, BufferJSON } = require('@whiskeysockets/baileys');
 const pino = require('pino');
-const http = http = require('http');
+const http = require('http'); // Corregido
 const { MongoClient } = require('mongodb');
 const { Sticker } = require('wa-sticker-formatter');
 
@@ -60,7 +60,7 @@ async function useMongoDBAuthState(collection) {
                 }
             }
         },
-        saveCreds: () => writeData(creds, 'creds') // Corregido para usar 'creds' directamente
+        saveCreds: () => writeData(creds, 'creds')
     };
 }
 
