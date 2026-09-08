@@ -144,8 +144,8 @@ async function connectToWhatsApp() {
         // 2. Comando #menu
         if (command === 'menu' || command === 'help' || command === 'commands') {
             const menuText = 
-`╭━━━ 🤖 *COCOBOT (CLON)* ━━━
-┃ ✐ *Desarrollado en Node.js*
+`╭━━━ 🤖 *COCOBOT New Version* ━━━
+┃ ✐ *Desarrollado por tu marido*
 ╰━━━━━━━━━━━━━━━━━━━
  
 📌 *COMANDOS DISPONIBLES:*
