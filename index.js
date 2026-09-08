@@ -1,6 +1,6 @@
 const { default: makeWASocket, DisconnectReason, downloadMediaMessage, initAuthCreds, BufferJSON } = require('@whiskeysockets/baileys');
 const pino = require('pino');
-const http = http = require('http');
+const http = require('http');
 const { MongoClient } = require('mongodb');
 const sharp = require('sharp');
 const axios = require('axios');
@@ -157,7 +157,7 @@ async function connectToWhatsApp() {
     const usersCollection = db.collection('users');
     const groupsCollection = db.collection('groups');
     const remindersCollection = db.collection('reminders');
-    const bankCollection = db.collection('user_bank'); // Banco personal (#still)
+    const bankCollection = db.collection('user_bank');
     
     console.log('📦 Conectado a MongoDB Atlas exitosamente');
 
@@ -216,7 +216,6 @@ async function connectToWhatsApp() {
         const sender = m.key.participant || from;
         const messageType = Object.keys(m.message)[0];
 
-        // --- CONTADOR AUTOMÁTICO DE MENSAJES (#TOPMSG Y #LOWMSG) ---
         try {
             await usersCollection.updateOne(
                 { jid: sender }, 
@@ -225,7 +224,6 @@ async function connectToWhatsApp() {
             );
         } catch {}
 
-        // --- SISTEMA ANTISPAM DE STICKERS ---
         if (from.endsWith('@g.us') && messageType === 'stickerMessage') {
             const ahora = Date.now();
             if (stickerTimeouts.has(sender)) {
@@ -260,7 +258,6 @@ async function connectToWhatsApp() {
         const args = body.slice(1).trim().split(/ +/);
         const command = args.shift().toLowerCase();
 
-        // Control de Cooldowns de Economía
         if (['work', 'w', 'daily'].includes(command)) {
             const limit = command === 'daily' ? 86400000 : 30000;
             const key = `${sender}-${command}`;
@@ -271,7 +268,6 @@ async function connectToWhatsApp() {
             cooldowns.set(key, Date.now());
         }
 
-        // --- COMANDOS BÁSICOS & MENÚ ---
         if (command === 'ping' || command === 'p') {
             return await sock.sendMessage(from, { text: '¡Pong! 🏓 CocoBot activo y en línea.' }, { quoted: m });
         }
@@ -281,7 +277,6 @@ async function connectToWhatsApp() {
             return await sock.sendMessage(from, { text: menu }, { quoted: m });
         }
 
-        // --- COMANDO #CHISTES ---
         if (command === 'chistes' || command === 'chiste') {
             const chistesList = [
                 "— Papá, papá, ¿qué se siente tener un hijo tan guapo, inteligente y perfecto?\n— No lo sé, hijo, pregúntale a tu abuelo.",
@@ -295,13 +290,11 @@ async function connectToWhatsApp() {
             return await sock.sendMessage(from, { text: `😂 *Chiste:* \n\n${chisteAleatorio}` }, { quoted: m });
         }
 
-        // --- COMANDO #IMAGEN ---
         if (command === 'imagen' || command === 'imgsearch') {
             const query = args.join(' ');
             if (!query) return await sock.sendMessage(from, { text: '⚠️ Escribe qué imagen buscas. Ej: *#imagen paisajes* o *#imagen gatos*' }, { quoted: m });
             try {
                 await sock.sendMessage(from, { text: '🔍 Buscando imagen...' }, { quoted: m });
-                // Usando la API de Unsplash Source aleatoria basada en la consulta
                 const imageUrl = `https://source.unsplash.com/featured/800x600/?${encodeURIComponent(query)}`;
                 await sock.sendMessage(from, { image: { url: imageUrl }, caption: `🖼️ Resultado para: *${query}*` }, { quoted: m });
             } catch {
@@ -309,7 +302,6 @@ async function connectToWhatsApp() {
             }
         }
 
-        // --- BANCO PERSONAL #STILL ---
         if (command === 'still') {
             const subAction = args[0]?.toLowerCase();
             const textoBanco = args.join(' ');
@@ -340,12 +332,10 @@ async function connectToWhatsApp() {
                 }
             }
 
-            // Guardar nueva nota o texto en el banco
             await bankCollection.insertOne({ userJid: sender, content: textoBanco, createdAt: new Date() });
             return await sock.sendMessage(from, { text: `✅ ¡Guardado en tu banco personal (#still) con éxito!\n📌 "${textoBanco}"` }, { quoted: m });
         }
 
-        // --- GESTIÓN DE PERFIL (#EDAD, #FRASE, #SETSTICKER) ---
         if (command === 'edad') {
             const edadNum = parseInt(args[0]);
             if (!edadNum || isNaN(edadNum) || edadNum <= 0 || edadNum > 120) {
@@ -370,7 +360,6 @@ async function connectToWhatsApp() {
             try {
                 const targetMsg = q ? { message: q } : m;
                 const stickerBuf = await downloadMediaMessage(targetMsg, 'buffer', {}, { logger: pino({ level: 'silent' }) });
-                // Guardar el sticker como base64 en la base de datos del usuario
                 const base64Sticker = stickerBuf.toString('base64');
                 await usersCollection.updateOne({ jid: sender }, { $set: { stickerBase64: base64Sticker } }, { upsert: true });
                 await sock.sendMessage(from, { text: '✅ ¡Sticker de identidad guardado en tu perfil con éxito!' }, { quoted: m });
@@ -379,7 +368,6 @@ async function connectToWhatsApp() {
             }
         }
 
-        // --- PERFIL AMPLIADO ---
         if (command === 'perfil' || command === 'verperfil') {
             const target = m.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0] || m.message.extendedTextMessage?.contextInfo?.participant || sender;
             const userData = await usersCollection.findOne({ jid: target }) || {};
@@ -402,7 +390,6 @@ async function connectToWhatsApp() {
 
             await sock.sendMessage(from, { text: perfilTxt, mentions: [target, userData.pareja].filter(Boolean) }, { quoted: m });
 
-            // Si tiene sticker de identidad guardado, se lo enviamos también
             if (userData.stickerBase64) {
                 try {
                     const stickerBuffer = Buffer.from(userData.stickerBase64, 'base64');
@@ -411,7 +398,6 @@ async function connectToWhatsApp() {
             }
         }
 
-        // --- COMANDO #KILL (EXPULSAR USUARIO CON GIF) ---
         if (command === 'kill' || command === 'ban') {
             if (!from.endsWith('@g.us')) return await sock.sendMessage(from, { text: '⚠️ Este comando solo se puede usar en grupos.' }, { quoted: m });
             try {
@@ -437,7 +423,6 @@ async function connectToWhatsApp() {
             }
         }
 
-        // --- COMANDO DE CONSUMO Y ESTADÍSTICAS DEL SERVIDOR (SOLO ADMINS) ---
         if (command === 'consumo' || command === 'stats' || command === 'recursos') {
             if (!sender.includes('275028952228088')) {
                 if (from.endsWith('@g.us')) {
@@ -480,7 +465,6 @@ async function connectToWhatsApp() {
             return await sock.sendMessage(from, { text: statsText }, { quoted: m });
         }
 
-        // --- COMANDOS DE MENSAJES (#TOPMSG Y #LOWMSG) ---
         if (command === 'topmsg' || command === 'masactivos') {
             const topUsers = await usersCollection.find({ messageCount: { $exists: true } }).sort({ messageCount: -1 }).limit(5).toArray();
             if (topUsers.length === 0) return await sock.sendMessage(from, { text: '📊 Aún no hay registros de mensajes.' }, { quoted: m });
@@ -503,7 +487,6 @@ async function connectToWhatsApp() {
             return await sock.sendMessage(from, { text: txt, mentions: lowUsers.map(u => u.jid) }, { quoted: m });
         }
 
-        // --- GÉNERO ---
         if (command === 'genero') {
             const tipo = args[0]?.toLowerCase();
             if (!['hombre', 'mujer', 'cosa'].includes(tipo)) return await sock.sendMessage(from, { text: '⚠️ Usa: *hombre*, *mujer* o *cosa [nombre]*.' }, { quoted: m });
@@ -517,7 +500,6 @@ async function connectToWhatsApp() {
             return await sock.sendMessage(from, { text: `✅ Género actualizado a: *${val}*.` }, { quoted: m });
         }
 
-        // --- MATRIMONIOS ---
         if (command === 'casarse' || command === 'matrimonio') {
             const target = m.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0];
             if (!target || target === sender) return await sock.sendMessage(from, { text: '⚠️ Menciona a otra persona para casarte.' }, { quoted: m });
@@ -534,7 +516,6 @@ async function connectToWhatsApp() {
             return await sock.sendMessage(from, { text: `🎉 ¡VIVA LOS NOVIOS! @${proponte.split('@')[0]} y @${sender.split('@')[0]} están casados. 💍`, mentions: [sender, proponte] }, { quoted: m });
         }
 
-        // --- INTELIGENCIA ARTIFICIAL (GEMINI) ---
         if (command === 'ia' || command === 'gemini' || command === 'ai') {
             const query = args.join(' ');
             if (!query) return await sock.sendMessage(from, { text: '⚠️ Escribe algo para consultar a la IA.' }, { quoted: m });
@@ -545,7 +526,6 @@ async function connectToWhatsApp() {
             } catch { await sock.sendMessage(from, { text: '❌ Error al conectar con Gemini.' }, { quoted: m }); }
         }
 
-        // --- CUMPLEAÑOS ---
         if (command === 'cumple' || command === 'cumpleaños') {
             const fecha = args[0];
             if (!/^([0-2][0-9]|3[0-1])\/(0[1-9]|1[0-2])$/.test(fecha)) return await sock.sendMessage(from, { text: '⚠️ Usa el formato *DD/MM*.' }, { quoted: m });
@@ -565,12 +545,10 @@ async function connectToWhatsApp() {
             await sock.sendMessage(from, { text: txt, mentions: all.map(u => u.jid) }, { quoted: m });
         }
 
-        // --- FLIP / MONEDA ---
         if (command === 'flip' || command === 'coin') {
             return await sock.sendMessage(from, { text: `El resultado es: ${Math.random() < 0.5 ? '🪙 *Cara* 🎉' : '🪙 *Cruz* 🦅'}` }, { quoted: m });
         }
 
-        // --- CONFIGURACIÓN DE GRUPO ---
         if (command === 'setwelcome' || command === 'setgoodbye') {
             if (!from.endsWith('@g.us')) return await sock.sendMessage(from, { text: '⚠️ Solo en grupos.' }, { quoted: m });
             const meta = await sock.groupMetadata(from);
@@ -595,7 +573,6 @@ async function connectToWhatsApp() {
             } else { await sock.sendMessage(from, { text: 'ℹ️ El usuario no tiene timeout activo.' }, { quoted: m }); }
         }
 
-        // --- MULTIMEDIA & STICKERS ---
         if (command === 's' || command === 'sticker') {
             const q = m.message.extendedTextMessage?.contextInfo?.quotedMessage;
             const isImage = messageType === 'imageMessage' || q?.imageMessage;
@@ -643,7 +620,6 @@ async function connectToWhatsApp() {
             try { await sock.sendMessage(from, { delete: { remoteJid: from, id: info.stanzaId, participant: info.participant || sender } }); } catch { await sock.sendMessage(from, { text: '❌ Asegúrate de que el bot sea administrador.' }, { quoted: m }); }
         }
 
-        // --- ANUNCIOS ---
         if (command === 'anuncio') {
             if (!sender.includes('275028952228088')) return;
             const text = args.join(' ');
@@ -662,7 +638,6 @@ async function connectToWhatsApp() {
             } catch { await sock.sendMessage(from, { text: '❌ Error al enviar anuncio.' }, { quoted: m }); }
         }
 
-        // --- ECONOMÍA ---
         if (command === 'bal') {
             const u = await usersCollection.findOne({ jid: sender });
             return await sock.sendMessage(from, { text: `🪙 Tienes *${u ? u.coins : 0} coins*.` }, { quoted: m });
@@ -681,7 +656,6 @@ async function connectToWhatsApp() {
             return await sock.sendMessage(from, { text: '🎉 ¡Reclamaste *🪙 2000 coins*!' }, { quoted: m });
         }
 
-        // --- INTERACCIONES (HUG, KISS, SLAP) ---
         if (['hug', 'kiss', 'slap'].includes(command)) {
             const target = m.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0];
             if (!target) return await sock.sendMessage(from, { text: '⚠️ Menciona a alguien.' }, { quoted: m });
