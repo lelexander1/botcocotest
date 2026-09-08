@@ -267,13 +267,15 @@ async function connectToWhatsApp() {
             }
         }
 
-        // 5. Comando #anuncio (Validación con detector de ID)
+        // 5. Comando #anuncio (Validación flexible para número o LID)
         if (command === 'anuncio' || command === 'broadcast') {
-            const tuNumeroJid = '51924876085'; // Aquí pondrás el número que te devuelva el bot
+            const miLidOSender = '275028952228088'; // Tu LID detectado por el bot
+            const tuNumeroJid = '51924876085';     // Tu número alternativo
             const groupId = '120363422057355283@g.us'; 
 
-            if (!sender.includes(tuNumeroJid)) {
-                return await sock.sendMessage(from, { text: `⚠️ No tienes permisos para usar este comando.\n\n*(Debug: El número que el bot está detectando es: ${sender})*` }, { quoted: m });
+            // Permite el acceso si el sender contiene tu LID o tu número
+            if (!sender.includes(miLidOSender) && !sender.includes(tuNumeroJid)) {
+                return await sock.sendMessage(from, { text: `⚠️ No tienes permisos para usar este comando.\n\n*(Debug detectado: ${sender})*` }, { quoted: m });
             }
 
             const anuncioTexto = args.join(' ');
