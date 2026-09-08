@@ -1,7 +1,6 @@
 const { default: makeWASocket, DisconnectReason, downloadMediaMessage, initAuthCreds, BufferJSON } = require('@whiskeysockets/baileys');
-const { Sticker, StickerTypes } = require('wa-sticker-formatter');
 const pino = require('pino');
-const http = require('http');
+const http = http = require('http');
 const { MongoClient } = require('mongodb');
 const sharp = require('sharp');
 const axios = require('axios');
@@ -13,14 +12,12 @@ const path = require('path');
 const os = require('os');
 const { GoogleGenAI } = require('@google/genai');
 
-// Inicializar Gemini API usando la variable de entorno
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-// Servidor HTTP para Render y mecanismo anti-inactividad optimizado a cada 5 minutos
 const PORT = process.env.PORT || 3000;
 const server = http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('CocoBot con Gemini IA activo 24/7!\n');
+    res.end('CocoBot avanzado con antispam de stickers activo 24/7!\n');
 });
 
 server.listen(PORT, () => {
@@ -33,8 +30,9 @@ server.listen(PORT, () => {
 });
 
 const cooldowns = new Map();
+const stickerSpamTracker = new Map(); // Control específico para stickers repetidos: { senderId: { lastStickerId, count, timestamp } }
+const propuestasMatrimonio = new Map(); 
 
-// Adaptador de sesión en MongoDB Atlas con purga automática para ahorrar espacio gratuito
 async function useMongoDBAuthState(collection) {
     const writeData = async (data, id) => {
         const json = JSON.stringify(data, BufferJSON.replacer);
@@ -95,7 +93,6 @@ async function useMongoDBAuthState(collection) {
     };
 }
 
-// Función robusta para convertir video a sticker animado
 async function convertirVideoAStickerAnimado(videoBuffer) {
     const tempInputPath = path.join(os.tmpdir(), `input_${Date.now()}.mp4`);
     const tempOutputPath = path.join(os.tmpdir(), `output_${Date.now()}.webp`);
@@ -138,7 +135,6 @@ async function convertirVideoAStickerAnimado(videoBuffer) {
     });
 }
 
-// Función auxiliar para obtener un GIF animado aleatorio desde Giphy
 async function obtenerGifAleatorio(queryTematica, urlRespaldoFijo) {
     try {
         const apiKey = process.env.GIPHY_API_KEY;
@@ -169,7 +165,6 @@ async function obtenerGifAleatorio(queryTematica, urlRespaldoFijo) {
     }
 }
 
-// Función para calcular días faltantes en hora de Perú
 function calcularDiasFaltantes(fechaStr) {
     if (!fechaStr) return 999;
     const [dia, mes] = fechaStr.split('/').map(Number);
@@ -230,7 +225,6 @@ async function connectToWhatsApp() {
 
     sock.ev.on('creds.update', saveCreds);
 
-    // --- EVENTO DE BIENVENIDA Y DESPEDIDA ---
     sock.ev.on('group-participants.update', async (anu) => {
         try {
             const mdata = await sock.groupMetadata(anu.id);
@@ -267,6 +261,30 @@ async function connectToWhatsApp() {
         const sender = m.key.participant || from;
         const messageType = Object.keys(m.message)[0];
 
+        // --- ANTISPAM EXCLUSIVO PARA STICKERS REPETIDOS ---
+        if (from.endsWith('@g.us') && messageType === 'stickerMessage') {
+            const stickerId = m.message.stickerMessage.fileSha256 ? Buffer.from(m.message.stickerMessage.fileSha256).toString('hex') : 'unknown';
+            const ahora = Date.now();
+
+            if (!stickerSpamTracker.has(sender)) {
+                stickerSpamTracker.set(sender, { lastStickerId: stickerId, count: 1, firstTime: ahora });
+            } else {
+                let tracker = stickerSpamTracker.get(sender);
+                // Si es el mismo sticker y lo manda repetido en menos de 10 segundos
+                if (tracker.lastStickerId === stickerId && (ahora - tracker.firstTime < 10000)) {
+                    tracker.count++;
+                    if (tracker.count >= 3) { // Si repite el mismo sticker 3 veces seguidas
+                        try {
+                            await sock.sendMessage(from, { delete: m.key }); // Borra el sticker repetido
+                            return; 
+                        } catch (err) {}
+                    }
+                } else {
+                    stickerSpamTracker.set(sender, { lastStickerId: stickerId, count: 1, firstTime: ahora });
+                }
+            }
+        }
+
         let body = m.message.imageMessage?.caption || 
                    m.message.videoMessage?.caption || 
                    m.message.extendedTextMessage?.text || 
@@ -301,20 +319,26 @@ async function connectToWhatsApp() {
 `⚡ *PANEL PRINCIPAL - CocoBot* ⚡
 ────────────────────────
 👤 *Creado por:* Alencito
-🚀 *Estado:* Online 24/7
+🚀 *Estado:* Online 24/7 (Antispam de stickers activo)
 ────────────────────────
  
 📌 *COMANDOS DISPONIBLES:*
 
 🧠 *Inteligencia Artificial*
-> '#ia [pregunta]' - Consulta a Gemini AI cualquier duda.
+> '#ia [pregunta]' - Consulta a Gemini AI.
+
+👤 *Perfil y Matrimonios*
+> '#genero [hombre/mujer/cosa nombre]' - Establece tu género.
+> '#casarse @usuario' - Propón matrimonio.
+> '#aceptar' - Acepta una propuesta pendiente.
+> '#perfil [@usuario]' - Muestra la foto de perfil.
 
 ✨ *Stickers, Videos y Juegos*
 > '#s' - Imagen a sticker
 > '#gif' o '#tovideo' - Video a sticker animado
-> '#toimg' - Sticker a imagen
+> '#toimg' - Sticker a imagen (Acepta citados)
 > '#del' - Borra mensaje citado
-> '#flip' - Lanza una moneda (Cara o Cruz)
+> '#flip' - Lanza una moneda
 
 🎂 *Cumpleaños (Permanentes)*
 > '#cumple DD/MM' - Guarda tu fecha.
@@ -324,32 +348,112 @@ async function connectToWhatsApp() {
 > '#setwelcome [texto]' - Mensaje de bienvenida.
 > '#setgoodbye [texto]' - Mensaje de despedida.
 
-📢 *Administración (Privado)*
-> '#anuncio [texto]' - Comunicado oficial
-
-🪙 *Economía & 🎉 Diversión*
-> '#bal', '#work', '#daily'
-> '#hug', '#kiss', '#slap' [@usuario]`;
+📢 *Administración*
+> '#anuncio [texto]' - Envía comunicado tageando a todos.`;
 
             await sock.sendMessage(from, { text: menuText }, { quoted: m });
         }
 
-        // --- COMANDO DE INTELIGENCIA ARTIFICIAL (GEMINI) ---
+        if (command === 'genero') {
+            const tipo = args[0]?.toLowerCase();
+            if (!['hombre', 'mujer', 'cosa'].includes(tipo)) {
+                return await sock.sendMessage(from, { text: '⚠️ Debes especificar: *hombre*, *mujer* o *cosa*.\nEjemplo: *#genero cosa tostadora*' }, { quoted: m });
+            }
+
+            let detalleGenero = tipo;
+            if (tipo === 'cosa') {
+                const nombreCosa = args.slice(1).join(' ');
+                if (!nombreCosa) {
+                    return await sock.sendMessage(from, { text: '⚠️ Debes ponerle un nombre si eres una cosa.\nEjemplo: *#genero cosa refrigeradora*' }, { quoted: m });
+                }
+                detalleGenero = `cosa: ${nombreCosa}`;
+            }
+
+            await usersCollection.updateOne(
+                { jid: sender },
+                { $set: { genero: detalleGenero } },
+                { upsert: true }
+            );
+
+            await sock.sendMessage(from, { text: `✅ ¡Género actualizado a: *${detalleGenero}*!` }, { quoted: m });
+        }
+
+        if (command === 'casarse' || command === 'matrimonio') {
+            const target = m.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0];
+            if (!target) {
+                return await sock.sendMessage(from, { text: '⚠️ Debes mencionar a la persona: *#casarse @usuario*' }, { quoted: m });
+            }
+            if (target === sender) {
+                return await sock.sendMessage(from, { text: '⚠️ No puedes casarte contigo mismo.' }, { quoted: m });
+            }
+
+            propuestasMatrimonio.set(target, sender);
+            const tagTarget = target.split('@')[0];
+            const tagSender = sender.split('@')[0];
+
+            await sock.sendMessage(from, { 
+                text: `💍 ¡@${tagSender} le ha pedido matrimonio a @${tagTarget}!\n\nEscribe *#aceptar* para aceptar la propuesta.`, 
+                mentions: [sender, target] 
+            }, { quoted: m });
+        }
+
+        if (command === 'aceptar') {
+            const parejaProponte = propuestasMatrimonio.get(sender);
+            if (!parejaProponte) {
+                return await sock.sendMessage(from, { text: '⚠️ No tienes ninguna propuesta pendiente.' }, { quoted: m });
+            }
+
+            await usersCollection.updateOne({ jid: sender }, { $set: { pareja: parejaProponte } }, { upsert: true });
+            await usersCollection.updateOne({ jid: parejaProponte }, { $set: { pareja: sender } }, { upsert: true });
+            propuestasMatrimonio.delete(sender);
+
+            const tagSender = sender.split('@')[0];
+            const tagPareja = parejaProponte.split('@')[0];
+
+            await sock.sendMessage(from, { 
+                text: `🎉 ¡VIVA LOS NOVIOS! 🥂\n\n@${tagPareja} y @${tagSender} están casados oficialmente. 💍✨`, 
+                mentions: [sender, parejaProponte] 
+            }, { quoted: m });
+        }
+
+        if (command === 'perfil' || command === 'verfoto') {
+            let targetUser = m.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0] || 
+                             m.message.extendedTextMessage?.contextInfo?.participant || 
+                             sender;
+
+            try {
+                let ppUrl;
+                try {
+                    ppUrl = await sock.profilePictureUrl(targetUser, 'image');
+                } catch {
+                    ppUrl = 'https://i.imgur.com/7A2b2nP.jpeg';
+                }
+
+                const tagTarget = targetUser.split('@')[0];
+                await sock.sendMessage(from, { 
+                    image: { url: ppUrl }, 
+                    caption: `📸 Foto de perfil de @${tagTarget}`, 
+                    mentions: [targetUser] 
+                }, { quoted: m });
+            } catch (err) {
+                await sock.sendMessage(from, { text: '❌ No se pudo obtener la foto de perfil.' }, { quoted: m });
+            }
+        }
+
         if (command === 'ia' || command === 'gemini' || command === 'ai') {
             const promptTexto = args.join(' ');
             if (!promptTexto) {
-                return await sock.sendMessage(from, { text: '⚠️ Escribe algo para consultarle a la IA.\nEjemplo: *#ia ¿Quién escribió Cien años de soledad?*' }, { quoted: m });
+                return await sock.sendMessage(from, { text: '⚠️ Escribe algo para consultarle a la IA.' }, { quoted: m });
             }
 
             try {
                 await sock.sendMessage(from, { text: '🤖 Pensando respuesta...' }, { quoted: m });
 
-                // Llamada oficial a la API de Gemini (modelo actualizado)
                 const response = await ai.models.generateContent({
                     model: 'gemini-3.6-flash',
                     contents: promptTexto,
                 });
-                
+
                 const respuestaIA = response.text || 'Lo siento, no pude procesar una respuesta.';
                 await sock.sendMessage(from, { text: `🤖 *Gemini IA*:\n\n${respuestaIA}` }, { quoted: m });
             } catch (error) {
@@ -358,24 +462,23 @@ async function connectToWhatsApp() {
             }
         }
 
-        // --- SISTEMA DE CUMPLEAÑOS ---
         if (command === 'cumple' || command === 'cumpleaños') {
             const fecha = args[0];
             const regexFecha = /^([0-2][0-9]|3[0-1])\/(0[1-9]|1[0-2])$/;
 
             if (!fecha || !regexFecha.test(fecha)) {
-                return await sock.sendMessage(from, { text: '⚠️ Formato incorrecto. Usa el formato *DD/MM* (Ej: *#cumple 25/08*).' }, { quoted: m });
+                return await sock.sendMessage(from, { text: '⚠️ Usa el formato *DD/MM* (Ej: *#cumple 25/08*).' }, { quoted: m });
             }
 
             await usersCollection.updateOne({ jid: sender }, { $set: { cumple: fecha } }, { upsert: true });
-            await sock.sendMessage(from, { text: `✅ ¡Listo! Tu cumpleaños el *${fecha}* ha sido guardado de forma permanente.` }, { quoted: m });
+            await sock.sendMessage(from, { text: `✅ ¡Tu cumpleaños el *${fecha}* ha sido guardado!` }, { quoted: m });
         }
 
         if (command === 'cumples' || command === 'listarcumples') {
             const allUsers = await usersCollection.find({ cumple: { $exists: true } }).toArray();
 
             if (allUsers.length === 0) {
-                return await sock.sendMessage(from, { text: '📅 No hay cumpleaños registrados aún.' }, { quoted: m });
+                return await sock.sendMessage(from, { text: '📅 No hay cumpleaños registrados.' }, { quoted: m });
             }
 
             allUsers.sort((a, b) => calcularDiasFaltantes(a.cumple) - calcularDiasFaltantes(b.cumple));
@@ -391,18 +494,15 @@ async function connectToWhatsApp() {
             const mentions = allUsers.map(u => u.jid);
             await sock.sendMessage(from, { text: textoLista, mentions }, { quoted: m });
         }
-        // ------------------------------
 
-        // --- COMANDO #FLIP (CARA O CRUZ) ---
         if (command === 'flip' || command === 'coin') {
             const resultado = Math.random() < 0.5 ? '🪙 *Cara* 🎉' : '🪙 *Cruz* 🦅';
-            await sock.sendMessage(from, { text: `El resultado del lanzamiento es: ${resultado}` }, { quoted: m });
+            await sock.sendMessage(from, { text: `El resultado es: ${resultado}` }, { quoted: m });
         }
 
-        // --- CONFIGURACIÓN DE BIENVENIDA / DESPEDIDA POR ADMINISTRADORES ---
         if (command === 'setwelcome' || command === 'setgoodbye') {
             if (!from.endsWith('@g.us')) {
-                return await sock.sendMessage(from, { text: '⚠️ Este comando solo se puede usar dentro de un grupo.' }, { quoted: m });
+                return await sock.sendMessage(from, { text: '⚠️ Solo en grupos.' }, { quoted: m });
             }
 
             const groupMetadata = await sock.groupMetadata(from);
@@ -410,12 +510,12 @@ async function connectToWhatsApp() {
             const tuLidOSender = '275028952228088';
 
             if (!admins.includes(sender) && !sender.includes(tuLidOSender)) {
-                return await sock.sendMessage(from, { text: '⚠️ Solo los administradores del grupo pueden cambiar estos mensajes.' }, { quoted: m });
+                return await sock.sendMessage(from, { text: '⚠️ Solo administradores.' }, { quoted: m });
             }
 
             const nuevoTexto = args.join(' ');
             if (!nuevoTexto) {
-                return await sock.sendMessage(from, { text: `⚠️ Escribe el mensaje deseado (usa *@usuario*).\nEjemplo: *#${command} ¡Hola @usuario!*` }, { quoted: m });
+                return await sock.sendMessage(from, { text: '⚠️ Escribe el mensaje.' }, { quoted: m });
             }
 
             const campoAActualizar = command === 'setwelcome' ? 'welcome' : 'goodbye';
@@ -425,18 +525,16 @@ async function connectToWhatsApp() {
                 { upsert: true }
             );
 
-            const nombreAccion = command === 'setwelcome' ? 'bienvenida' : 'despedida';
-            await sock.sendMessage(from, { text: `✅ ¡Mensaje de *${nombreAccion}* actualizado con éxito!` }, { quoted: m });
+            await sock.sendMessage(from, { text: `✅ ¡Actualizado con éxito!` }, { quoted: m });
         }
 
-        // Stickers de Imágenes
         if (command === 's' || command === 'sticker') {
             const quotedMessage = m.message.extendedTextMessage?.contextInfo?.quotedMessage;
             const isMedia = messageType === 'imageMessage';
             const isQuotedMedia = quotedMessage && quotedMessage.imageMessage;
 
             if (!isMedia && !isQuotedMedia) {
-                return await sock.sendMessage(from, { text: '⚠️ Envía una imagen o responde a una con *#s*.' }, { quoted: m });
+                return await sock.sendMessage(from, { text: '⚠️ Envía una imagen o responde a una.' }, { quoted: m });
             }
 
             try {
@@ -449,90 +547,70 @@ async function connectToWhatsApp() {
 
                 await sock.sendMessage(from, { sticker: stickerBuffer }, { quoted: m });
             } catch (error) {
-                await sock.sendMessage(from, { text: '❌ Error al procesar la imagen para sticker.' }, { quoted: m });
+                await sock.sendMessage(from, { text: '❌ Error al procesar.' }, { quoted: m });
             }
         }
 
-        // Conversión de Video a Sticker Animado con ffmpeg-static
-        // Conversión de Video/GIF a Sticker Animado
-if (command === 'tovideo' || command === 'vidtosgif' || command === 'gif' || command === 's') {
-    const quotedMessage = m.message.extendedTextMessage?.contextInfo?.quotedMessage;
-    
-    // Verifica si es imagen o video (propio o citado)
-    const isVideo = messageType === 'videoMessage';
-    const isQuotedVideo = quotedMessage && quotedMessage.videoMessage;
-    const isImage = messageType === 'imageMessage';
-    const isQuotedImage = quotedMessage && quotedMessage.imageMessage;
-
-    if (!isVideo && !isQuotedVideo && !isImage && !isQuotedImage) {
-        return await sock.sendMessage(from, { text: '⚠️ Adjunta un video, imagen o responde a uno con *#gif* o *#s*.' }, { quoted: m });
-    }
-
-    try {
-        await sock.sendMessage(from, { text: '⏳ Procesando sticker...' }, { quoted: m });
-        
-        const mediaMsg = (isVideo || isImage) ? m : { message: quotedMessage };
-        const buffer = await downloadMediaMessage(mediaMsg, 'buffer', {}, { logger: pino({ level: 'silent' }) });
-
-        // Límite de seguridad: 6MB para evitar colapsar la RAM de Render
-        if (buffer.length > 6 * 1024 * 1024) {
-            return await sock.sendMessage(from, { text: '❌ El archivo es demasiado grande. Máximo 6 MB.' }, { quoted: m });
-        }
-
-        // Magia de wa-sticker-formatter (funciona para imágenes estáticas y videos)
-        const sticker = new Sticker(buffer, {
-            pack: 'CocoBot', // Nombre del paquete
-            author: 'Ñelmer',  // Autor del sticker
-            type: StickerTypes.FULL, // FULL (cuadrado) o CROPPED
-            quality: 70,     // Calidad (40-50 es ideal para videos)
-            background: 'transparent'
-        });
-
-        const stickerBuffer = await sticker.toBuffer();
-        await sock.sendMessage(from, { sticker: stickerBuffer }, { quoted: m });
-        
-    } catch (error) {
-        // Log vital para hacer troubleshooting si sigue fallando
-        console.error('❌ Error crítico en motor de stickers:', error);
-        await sock.sendMessage(from, { text: '❌ Ocurrió un error al procesar el archivo. Intenta con uno más corto elmerchupaganpi.' }, { quoted: m });
-    }
-}
-------------------------------
-        // ToImg
-        if (command === 'toimg' || command === 'img') {
+        if (command === 'tovideo' || command === 'vidtosgif' || command === 'gif') {
             const quotedMessage = m.message.extendedTextMessage?.contextInfo?.quotedMessage;
-            if (!quotedMessage?.stickerMessage) {
-                return await sock.sendMessage(from, { text: '⚠️ Responde a un sticker con *#toimg*.' }, { quoted: m });
+            const isVideo = messageType === 'videoMessage';
+            const isQuotedVideo = quotedMessage && quotedMessage.videoMessage;
+
+            if (!isVideo && !isQuotedVideo) {
+                return await sock.sendMessage(from, { text: '⚠️ Adjunta un video o responde a uno.' }, { quoted: m });
             }
 
             try {
-                const buffer = await downloadMediaMessage({ message: quotedMessage }, 'buffer', {}, { logger: pino({ level: 'silent' }) });
-                const imageBuffer = await sharp(buffer).png().toBuffer();
-                await sock.sendMessage(from, { image: imageBuffer, caption: '✨ Convertido a imagen.' }, { quoted: m });
+                await sock.sendMessage(from, { text: '⏳ Convirtiendo video...' }, { quoted: m });
+                const mediaMsg = isVideo ? m : { message: quotedMessage };
+                
+                const buffer = await downloadMediaMessage(mediaMsg, 'buffer', {}, { logger: pino({ level: 'silent' }) });
+
+                if (buffer.length > 6 * 1024 * 1024) {
+                    return await sock.sendMessage(from, { text: '❌ El video pesa más de 6 MB.' }, { quoted: m });
+                }
+
+                const stickerBuffer = await convertirVideoAStickerAnimado(buffer);
+                await sock.sendMessage(from, { sticker: stickerBuffer }, { quoted: m });
             } catch (error) {
-                await sock.sendMessage(from, { text: '❌ Error al convertir el sticker.' }, { quoted: m });
+                await sock.sendMessage(from, { text: '❌ Error al procesar el video.' }, { quoted: m });
             }
         }
 
-        // Borrar mensaje (#del)
+        if (command === 'toimg' || command === 'img') {
+            const quotedMessage = m.message.extendedTextMessage?.contextInfo?.quotedMessage;
+            const isSticker = messageType === 'stickerMessage';
+            const isQuotedSticker = quotedMessage && quotedMessage.stickerMessage;
+
+            if (!isSticker && !isQuotedSticker) {
+                return await sock.sendMessage(from, { text: '⚠️ Envía un sticker o responde a uno.' }, { quoted: m });
+            }
+
+            try {
+                const mediaMsg = isSticker ? m : { message: quotedMessage };
+                const buffer = await downloadMediaMessage(mediaMsg, 'buffer', {}, { logger: pino({ level: 'silent' }) });
+                const imageBuffer = await sharp(buffer).png().toBuffer();
+                await sock.sendMessage(from, { image: imageBuffer, caption: '✨ Convertido a imagen.' }, { quoted: m });
+            } catch (error) {
+                await sock.sendMessage(from, { text: '❌ Error al convertir.' }, { quoted: m });
+            }
+        }
+
         if (command === 'del' || command === 'delete') {
             const contextInfo = m.message.extendedTextMessage?.contextInfo;
             if (!contextInfo || !contextInfo.stanzaId) {
-                return await sock.sendMessage(from, { text: '⚠️ Responde al mensaje que deseas eliminar con *#del*.' }, { quoted: m });
+                return await sock.sendMessage(from, { text: '⚠️ Responde al mensaje que deseas eliminar.' }, { quoted: m });
             }
 
             try {
                 await sock.sendMessage(from, { delete: { remoteJid: from, id: contextInfo.stanzaId, participant: contextInfo.participant || m.key.participant } });
             } catch (error) {
-                await sock.sendMessage(from, { text: '❌ Asegúrate de que el bot sea *Administrador* del grupo.' }, { quoted: m });
+                await sock.sendMessage(from, { text: '❌ Asegúrate de que el bot sea administrador.' }, { quoted: m });
             }
         }
 
-        // --- COMANDO #ANUNCIO ---
         if (command === 'anuncio') {
             const tuLidOSender = '275028952228088';
-            const groupId = '120363422057355283@g.us'; 
-
             if (!sender.includes(tuLidOSender)) return;
 
             const anuncioTexto = args.join(' ');
@@ -541,21 +619,30 @@ if (command === 'tovideo' || command === 'vidtosgif' || command === 'gif' || com
             }
 
             try {
-                await sock.sendMessage(groupId, { text: `📢 *ANUNCIO OFICIAL* 📢\n\n${anuncioTexto}` });
+                let mentionsList = [];
+                let textoFinal = `📢 *ANUNCIO OFICIAL* 📢\n\n${anuncioTexto}\n\n`;
+
+                if (from.endsWith('@g.us')) {
+                    const groupMeta = await sock.groupMetadata(from);
+                    mentionsList = groupMeta.participants.map(p => p.id);
+                    groupMeta.participants.forEach(p => {
+                        textoFinal += `@${p.id.split('@')[0]} `;
+                    });
+                }
+
+                await sock.sendMessage(from, { text: textoFinal, mentions: mentionsList });
                 
                 const stickerAnuncio = await obtenerGifAleatorio('attention alert news announcement', 'https://media.giphy.com/media/xT9IgzoKnwFNmISR9I/giphy.gif');
                 if (stickerAnuncio) {
-                    await sock.sendMessage(groupId, { sticker: stickerAnuncio });
+                    await sock.sendMessage(from, { sticker: stickerAnuncio });
                 }
 
-                await sock.sendMessage(from, { text: '✅ ¡Anuncio enviado con éxito al grupo!' }, { quoted: m });
+                await sock.sendMessage(from, { text: '✅ ¡Anuncio enviado!' }, { quoted: m });
             } catch (error) {
-                console.error('Error al enviar anuncio:', error);
-                await sock.sendMessage(from, { text: '❌ Ocurrió un error al enviar el anuncio.' }, { quoted: m });
+                await sock.sendMessage(from, { text: '❌ Error al enviar anuncio.' }, { quoted: m });
             }
         }
 
-        // Economía
         if (command === 'bal') {
             let user = await usersCollection.findOne({ jid: sender });
             await sock.sendMessage(from, { text: `🪙 Tienes *${user ? user.coins : 0} coins*.` }, { quoted: m });
@@ -578,7 +665,6 @@ if (command === 'tovideo' || command === 'vidtosgif' || command === 'gif' || com
             await sock.sendMessage(from, { text: `🎉 ¡Reclamaste *🪙 2000 coins*!` }, { quoted: m });
         }
 
-        // Interacciones GIF Animado
         if (['hug', 'kiss', 'slap'].includes(command)) {
             const target = m.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0];
             if (!target) return await sock.sendMessage(from, { text: '⚠️ Menciona a alguien.' }, { quoted: m });
@@ -621,7 +707,6 @@ if (command === 'tovideo' || command === 'vidtosgif' || command === 'gif' || com
     });
 }
 
-// Verificador automático de cumpleaños en hora de Perú (America/Lima) a las 00:00
 function iniciarVerificadorCumpleaños(sock, usersCollection) {
     const groupId = '120363422057355283@g.us'; 
     let ultimoDiaFelicitado = ''; 
