@@ -267,13 +267,13 @@ async function connectToWhatsApp() {
             }
         }
 
-        // 5. Comando #anuncio (Validación optimizada para Alencito)
+        // 5. Comando #anuncio (Validación con detector de ID)
         if (command === 'anuncio' || command === 'broadcast') {
-            const tuNumeroJid = '51924876085'; 
+            const tuNumeroJid = '51924876085'; // Aquí pondrás el número que te devuelva el bot
             const groupId = '120363422057355283@g.us'; 
 
             if (!sender.includes(tuNumeroJid)) {
-                return await sock.sendMessage(from, { text: '⚠️ No tienes permisos para usar este comando.' }, { quoted: m });
+                return await sock.sendMessage(from, { text: `⚠️ No tienes permisos para usar este comando.\n\n*(Debug: El número que el bot está detectando es: ${sender})*` }, { quoted: m });
             }
 
             const anuncioTexto = args.join(' ');
