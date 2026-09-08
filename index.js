@@ -453,33 +453,50 @@ async function connectToWhatsApp() {
         }
 
         // Conversión de Video a Sticker Animado con ffmpeg-static
-        if (command === 'tovideo' || command === 'vidtosgif' || command === 'gif') {
-            const quotedMessage = m.message.extendedTextMessage?.contextInfo?.quotedMessage;
-            const isVideo = messageType === 'videoMessage';
-            const isQuotedVideo = quotedMessage && quotedMessage.videoMessage;
+        // Conversión de Video/GIF a Sticker Animado
+if (command === 'tovideo' || command === 'vidtosgif' || command === 'gif' || command === 's') {
+    const quotedMessage = m.message.extendedTextMessage?.contextInfo?.quotedMessage;
+    
+    // Verifica si es imagen o video (propio o citado)
+    const isVideo = messageType === 'videoMessage';
+    const isQuotedVideo = quotedMessage && quotedMessage.videoMessage;
+    const isImage = messageType === 'imageMessage';
+    const isQuotedImage = quotedMessage && quotedMessage.imageMessage;
 
-            if (!isVideo && !isQuotedVideo) {
-                return await sock.sendMessage(from, { text: '⚠️ Adjunta un video o responde a uno con *#gif*.' }, { quoted: m });
-            }
+    if (!isVideo && !isQuotedVideo && !isImage && !isQuotedImage) {
+        return await sock.sendMessage(from, { text: '⚠️ Adjunta un video, imagen o responde a uno con *#gif* o *#s*.' }, { quoted: m });
+    }
 
-            try {
-                await sock.sendMessage(from, { text: '⏳ Convirtiendo video a sticker animado...' }, { quoted: m });
-                const mediaMsg = isVideo ? m : { message: quotedMessage };
-                
-                const buffer = await downloadMediaMessage(mediaMsg, 'buffer', {}, { logger: pino({ level: 'silent' }) });
+    try {
+        await sock.sendMessage(from, { text: '⏳ Procesando sticker...' }, { quoted: m });
+        
+        const mediaMsg = (isVideo || isImage) ? m : { message: quotedMessage };
+        const buffer = await downloadMediaMessage(mediaMsg, 'buffer', {}, { logger: pino({ level: 'silent' }) });
 
-                if (buffer.length > 6 * 1024 * 1024) {
-                    return await sock.sendMessage(from, { text: '❌ El video es demasiado grande. Envía uno menor a 6 MB.' }, { quoted: m });
-                }
-
-                const stickerBuffer = await convertirVideoAStickerAnimado(buffer);
-                await sock.sendMessage(from, { sticker: stickerBuffer }, { quoted: m });
-            } catch (error) {
-                console.error('Error al convertir video:', error);
-                await sock.sendMessage(from, { text: '❌ Ocurrió un error al procesar el video. Intenta con uno más corto.' }, { quoted: m });
-            }
+        // Límite de seguridad: 6MB para evitar colapsar la RAM de Render
+        if (buffer.length > 6 * 1024 * 1024) {
+            return await sock.sendMessage(from, { text: '❌ El archivo es demasiado grande. Máximo 6 MB.' }, { quoted: m });
         }
 
+        // Magia de wa-sticker-formatter (funciona para imágenes estáticas y videos)
+        const sticker = new Sticker(buffer, {
+            pack: 'CocoBot', // Nombre del paquete
+            author: 'Gabo',  // Autor del sticker
+            type: StickerTypes.FULL, // FULL (cuadrado) o CROPPED
+            quality: 40,     // Calidad (40-50 es ideal para videos)
+            background: 'transparent'
+        });
+
+        const stickerBuffer = await sticker.toBuffer();
+        await sock.sendMessage(from, { sticker: stickerBuffer }, { quoted: m });
+        
+    } catch (error) {
+        // Log vital para hacer troubleshooting si sigue fallando
+        console.error('❌ Error crítico en motor de stickers:', error);
+        await sock.sendMessage(from, { text: '❌ Ocurrió un error al procesar el archivo. Intenta con uno más corto.' }, { quoted: m });
+    }
+}
+------------------------------
         // ToImg
         if (command === 'toimg' || command === 'img') {
             const quotedMessage = m.message.extendedTextMessage?.contextInfo?.quotedMessage;
