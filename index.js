@@ -348,7 +348,7 @@ async function connectToWhatsApp() {
                     model: 'gemini-2.5-flash',
                     contents: promptTexto,
                 });
-
+                
                 const respuestaIA = response.text || 'Lo siento, no pude procesar una respuesta.';
                 await sock.sendMessage(from, { text: `🤖 *Gemini IA*:\n\n${respuestaIA}` }, { quoted: m });
             } catch (error) {
