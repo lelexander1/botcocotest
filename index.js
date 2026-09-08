@@ -225,7 +225,6 @@ async function connectToWhatsApp() {
                 return await sock.sendMessage(from, { text: '📅 No hay cumpleaños registrados aún.' }, { quoted: m });
             }
 
-            // Ordenar los usuarios según quién cumple años más pronto
             allUsers.sort((a, b) => calcularDiasFaltantes(a.cumple) - calcularDiasFaltantes(b.cumple));
 
             let textoLista = '🎂 *LISTA DE CUMPLEAÑOS Y PRÓXIMOS* 🎂\n\n';
@@ -426,5 +425,4 @@ function iniciarVerificadorCumpleaños(sock, usersCollection) {
     }, 30 * 1000); 
 }
 
-connectYWhatsApp(); // Mantén la llamada correcta abajo
 connectToWhatsApp();
