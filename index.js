@@ -284,7 +284,7 @@ async function connectToWhatsApp() {
         // 6. Comando #anuncio (Solo para ti en chat privado)
         if (command === 'anuncio' || command === 'broadcast') {
             const tuNumeroJid = '51924876085@s.whatsapp.net'; 
-            const groupId = 'TU_GRUPO_JID_AQUI@g.us'; // Reemplaza esto con el ID real de tu grupo obtenido por consola o #idgrupo
+            const groupId = '120363422057355283@g.us'; // Reemplaza esto con el ID real de tu grupo obtenido por consola o #idgrupo
 
             if (from.endsWith('@s.whatsapp.net')) {
                 if (sender !== tuNumeroJid) {
