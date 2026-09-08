@@ -1,6 +1,6 @@
 const { default: makeWASocket, DisconnectReason, downloadMediaMessage, initAuthCreds, BufferJSON } = require('@whiskeysockets/baileys');
 const pino = require('pino');
-const http = http = require('http');
+const http = require('http');
 const { MongoClient } = require('mongodb');
 const sharp = require('sharp');
 const axios = require('axios');
@@ -48,12 +48,12 @@ async function useMongoDBAuthState(collection) {
         try { await collection.deleteOne({ _id: id }); } catch (error) {}
     };
 
-    // Auto-depuración: Elimina claves de sesión basura o antiguas que pesen más de 7 días sin actualizarse
+    // Auto-depuración: Elimina claves de sesión antiguas que pesen más de 7 días sin actualizarse
     try {
         const sieteDiasAtras = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
         await collection.deleteMany({ 
             updatedAt: { $lt: sieteDiasAtras }, 
-            _id: { $ne: 'creds' } // Protege las credenciales principales de inicio de sesión
+            _id: { $ne: 'creds' } 
         });
     } catch (e) {}
 
