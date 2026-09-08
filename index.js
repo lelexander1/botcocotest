@@ -17,7 +17,7 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 const PORT = process.env.PORT || 3000;
 const server = http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('CocoBot avanzado con antispam de stickers activo 24/7!\n');
+    res.end('CocoBot avanzado con Timeout de stickers activo 24/7!\n');
 });
 
 server.listen(PORT, () => {
@@ -30,7 +30,8 @@ server.listen(PORT, () => {
 });
 
 const cooldowns = new Map();
-const stickerSpamTracker = new Map(); // Control específico para stickers repetidos: { senderId: { lastStickerId, count, timestamp } }
+const stickerSpamTracker = new Map(); // { senderJid: { count, firstTime } }
+const stickerTimeouts = new Map();     // { senderJid: timestampFinTimeout }
 const propuestasMatrimonio = new Map(); 
 
 async function useMongoDBAuthState(collection) {
@@ -261,26 +262,45 @@ async function connectToWhatsApp() {
         const sender = m.key.participant || from;
         const messageType = Object.keys(m.message)[0];
 
-        // --- ANTISPAM EXCLUSIVO PARA STICKERS REPETIDOS ---
+        // --- SISTEMA ANTISPAM DE STICKERS CON TIMEOUT ---
         if (from.endsWith('@g.us') && messageType === 'stickerMessage') {
-            const stickerId = m.message.stickerMessage.fileSha256 ? Buffer.from(m.message.stickerMessage.fileSha256).toString('hex') : 'unknown';
             const ahora = Date.now();
 
+            // 1. Validar si el usuario ya está silenciado (en timeout) para enviar stickers
+            if (stickerTimeouts.has(sender)) {
+                const tiempoFin = stickerTimeouts.get(sender);
+                if (ahora < tiempoFin) {
+                    try {
+                        await sock.sendMessage(from, { delete: m.key }); // Borra el sticker inmediatamente
+                    } catch (err) {}
+                    return; // Ignora por completo el mensaje
+                } else {
+                    stickerTimeouts.delete(sender); // Expiró el timeout
+                }
+            }
+
+            // 2. Conteo de stickers enviados en ráfaga (ej: más de 5 stickers en menos de 6 segundos)
             if (!stickerSpamTracker.has(sender)) {
-                stickerSpamTracker.set(sender, { lastStickerId: stickerId, count: 1, firstTime: ahora });
+                stickerSpamTracker.set(sender, { count: 1, firstTime: ahora });
             } else {
                 let tracker = stickerSpamTracker.get(sender);
-                // Si es el mismo sticker y lo manda repetido en menos de 10 segundos
-                if (tracker.lastStickerId === stickerId && (ahora - tracker.firstTime < 10000)) {
+                if (ahora - tracker.firstTime < 6000) { // Ventana de 6 segundos
                     tracker.count++;
-                    if (tracker.count >= 3) { // Si repite el mismo sticker 3 veces seguidas
-                        try {
-                            await sock.sendMessage(from, { delete: m.key }); // Borra el sticker repetido
-                            return; 
-                        } catch (err) {}
+                    if (tracker.count >= 5) { // Si pasa de 5 stickers seguidos
+                        const tiempoTimeout = ahora + (2 * 60 * 1000); // 2 minutos de castigo sin stickers
+                        stickerTimeouts.set(sender, tiempoTimeout);
+                        stickerSpamTracker.delete(sender);
+
+                        await sock.sendMessage(from, { 
+                            text: `⚠️ @${sender.split('@')[0]} ha recibido un *timeout de 2 minutos* sin poder enviar stickers por hacer spam. 🛑\n(Un administrador puede usar *#untimeout @usuario* para quitarle el castigo).`, 
+                            mentions: [sender] 
+                        });
+
+                        try { await sock.sendMessage(from, { delete: m.key }); } catch (e) {}
+                        return;
                     }
                 } else {
-                    stickerSpamTracker.set(sender, { lastStickerId: stickerId, count: 1, firstTime: ahora });
+                    stickerSpamTracker.set(sender, { count: 1, firstTime: ahora });
                 }
             }
         }
@@ -319,7 +339,7 @@ async function connectToWhatsApp() {
 `⚡ *PANEL PRINCIPAL - CocoBot* ⚡
 ────────────────────────
 👤 *Creado por:* Alencito
-🚀 *Estado:* Online 24/7 (Antispam de stickers activo)
+🚀 *Estado:* Online 24/7
 ────────────────────────
  
 📌 *COMANDOS DISPONIBLES:*
@@ -344,14 +364,43 @@ async function connectToWhatsApp() {
 > '#cumple DD/MM' - Guarda tu fecha.
 > '#cumples' - Lista y días faltantes.
 
-⚙️ *Configuración de Grupo (Admin)*
+⚙️ *Configuración y Moderación (Admin)*
 > '#setwelcome [texto]' - Mensaje de bienvenida.
 > '#setgoodbye [texto]' - Mensaje de despedida.
+> '#untimeout @usuario' - Quita el baneo de stickers a alguien.
 
 📢 *Administración*
 > '#anuncio [texto]' - Envía comunicado tageando a todos.`;
 
             await sock.sendMessage(from, { text: menuText }, { quoted: m });
+        }
+
+        // --- COMANDO DE ADMINISTRADOR PARA QUITAR TIMEOUT ---
+        if (command === 'untimeout' || command === 'quitarbanco') {
+            if (!from.endsWith('@g.us')) {
+                return await sock.sendMessage(from, { text: '⚠️ Este comando solo se usa en grupos.' }, { quoted: m });
+            }
+
+            const groupMetadata = await sock.groupMetadata(from);
+            const admins = groupMetadata.participants.filter(p => p.admin !== null).map(p => p.id);
+            const tuLidOSender = '275028952228088';
+
+            if (!admins.includes(sender) && !sender.includes(tuLidOSender)) {
+                return await sock.sendMessage(from, { text: '⚠️ Solo los administradores pueden quitar el timeout.' }, { quoted: m });
+            }
+
+            const target = m.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0];
+            if (!target) {
+                return await sock.sendMessage(from, { text: '⚠️ Debes mencionar al usuario. Ejemplo: *#untimeout @usuario*' }, { quoted: m });
+            }
+
+            if (stickerTimeouts.has(target)) {
+                stickerTimeouts.delete(target);
+                const tagTarget = target.split('@')[0];
+                await sock.sendMessage(from, { text: `✅ Se le ha retirado el timeout de stickers a @${tagTarget}. Ya puede volver a enviar stickers.`, mentions: [target] }, { quoted: m });
+            } else {
+                await sock.sendMessage(from, { text: 'ℹ️ Este usuario no tiene ningún timeout de stickers activo.' }, { quoted: m });
+            }
         }
 
         if (command === 'genero') {
