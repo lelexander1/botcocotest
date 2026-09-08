@@ -7,8 +7,11 @@
   },
   "dependencies": {
     "@whiskeysockets/baileys": "^6.7.12",
-    "pino": "^9.0.0",
+    "axios": "^1.7.0",
+    "ffmpeg-static": "^5.2.0",
+    "fluent-ffmpeg": "^2.1.2",
     "mongodb": "^6.3.0",
+    "pino": "^9.0.0",
     "sharp": "^0.33.2"
   },
   "engines": {
