@@ -3,12 +3,13 @@ const pino = require('pino');
 const http = require('http');
 const { MongoClient } = require('mongodb');
 const sharp = require('sharp');
+const axios = require('axios'); // Asegúrate de tener axios instalado o usa fetch nativo
 
 // Servidor HTTP para Render y mecanismo anti-inactividad (Auto-ping)
 const PORT = process.env.PORT || 3000;
 const server = http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('CocoBot activo 24/7 con MongoDB, Sharp, Cooldown y Anuncios!\n');
+    res.end('CocoBot optimizado 24/7!\n');
 });
 
 server.listen(PORT, () => {
@@ -17,17 +18,14 @@ server.listen(PORT, () => {
     setInterval(() => {
         const appUrl = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
         http.get(appUrl, (res) => {
-            console.log(`🔄 Auto-ping ejecutado. Código de estado: ${res.statusCode}`);
-        }).on('error', (err) => {
-            console.error('⚠️ Error en el auto-ping:', err.message);
-        });
+            // Logs limpios para no saturar Render
+        }).on('error', (err) => {});
     }, 10 * 60 * 1000);
 });
 
-// Memoria temporal para los Cooldowns en grupos y chats privados
 const cooldowns = new Map();
 
-// Adaptador de sesión en MongoDB Atlas
+// Adaptador de sesión en MongoDB Atlas optimizado
 async function useMongoDBAuthState(collection) {
     const writeData = async (data, id) => {
         const json = JSON.stringify(data, BufferJSON.replacer);
@@ -87,7 +85,7 @@ async function connectToWhatsApp() {
     const sessionCollection = db.collection('session');
     const usersCollection = db.collection('users');
     
-    console.log('📦 Conectado exitosamente a MongoDB Atlas');
+    console.log('📦 Conectado a MongoDB Atlas de forma eficiente');
 
     const { state, saveCreds } = await useMongoDBAuthState(sessionCollection);
 
@@ -98,20 +96,13 @@ async function connectToWhatsApp() {
 
     if (!sock.authState.creds.registered) {
         const phoneNumber = process.env.PHONE_NUMBER;
-        if (!phoneNumber) {
-            console.log('⚠️ Falta configurar la variable PHONE_NUMBER en Render.');
-            return;
-        }
+        if (!phoneNumber) return;
 
         setTimeout(async () => {
             try {
                 let code = await sock.requestPairingCode(phoneNumber.trim());
-                console.log(`\n========================================`);
-                console.log(`🔗 TU CÓDIGO DE VINCULACIÓN ES: ${code}`);
-                console.log(`========================================\n`);
-            } catch (error) {
-                console.error('Error al generar el código:', error);
-            }
+                console.log(`🔗 CÓDIGO DE VINCULACIÓN: ${code}`);
+            } catch (error) {}
         }, 5000);
     }
 
@@ -121,7 +112,7 @@ async function connectToWhatsApp() {
             const shouldReconnect = (lastDisconnect?.error)?.output?.statusCode !== DisconnectReason.loggedOut;
             if (shouldReconnect) connectToWhatsApp();
         } else if (connection === 'open') {
-            console.log('¡Conectado a WhatsApp exitosamente!');
+            console.log('¡CocoBot conectado exitosamente!');
         }
     });
 
@@ -135,22 +126,10 @@ async function connectToWhatsApp() {
         const sender = m.key.participant || from;
         const messageType = Object.keys(m.message)[0];
 
-        // Extracción robusta del cuerpo del mensaje (incluye captions en imágenes y videos)
-        let body = '';
-        if (messageType === 'conversation') {
-            body = m.message.conversation;
-        } else if (messageType === 'extendedTextMessage') {
-            body = m.message.extendedTextMessage.text;
-        } else if (messageType === 'imageMessage') {
-            body = m.message.imageMessage.caption || '';
-        } else if (messageType === 'videoMessage') {
-            body = m.message.videoMessage.caption || '';
-        } else {
-            body = m.message.imageMessage?.caption || 
+        let body = m.message.imageMessage?.caption || 
                    m.message.videoMessage?.caption || 
                    m.message.extendedTextMessage?.text || 
                    m.message.conversation || '';
-        }
 
         const prefix = '#';
         if (!body.startsWith(prefix)) return;
@@ -158,7 +137,7 @@ async function connectToWhatsApp() {
         const args = body.slice(prefix.length).trim().split(/ +/);
         const command = args.shift().toLowerCase();
 
-        // Control de Cooldown anti-spam para comandos de economía en grupos
+        // Control de Cooldown
         if (['work', 'w', 'daily'].includes(command)) {
             const cooldownTime = command === 'daily' ? 24 * 60 * 60 * 1000 : 30 * 1000;
             const userCooldownKey = `${sender}-${command}`;
@@ -169,20 +148,18 @@ async function connectToWhatsApp() {
                 const timeLeft = Math.ceil((cooldownTime - (now - lastTime)) / 1000);
                 const timeMessage = command === 'daily' 
                     ? '⏳ Ya reclamaste tu recompensa diaria. Vuelve mañana.' 
-                    : `⏳ Debes esperar *${timeLeft} segundos* antes de volver a usar #${command}.`;
+                    : `⏳ Espera *${timeLeft}s* para usar #${command}.`;
                 
                 return await sock.sendMessage(from, { text: timeMessage }, { quoted: m });
             }
             cooldowns.set(userCooldownKey, now);
         }
 
-        // 1. Comando #ping
         if (command === 'ping' || command === 'p') {
             await sock.sendMessage(from, { text: '¡Pong! 🏓 CocoBot activo y en línea.' }, { quoted: m });
         }
 
-        // 2. Comando #menu
-        if (command === 'menu' || command === 'help' || command === 'commands') {
+        if (command === 'menu' || command === 'help') {
             const menuText = 
 `⚡ *PANEL PRINCIPAL - CocoBot* ⚡
 ────────────────────────
@@ -191,187 +168,118 @@ async function connectToWhatsApp() {
 ────────────────────────
  
 📌 *COMANDOS DISPONIBLES:*
-
-✨ *Utilidades y Stickers*
-> '#s' o '#sticker' - Convierte una imagen en sticker.
-> '#toimg' - Convierte un sticker en imagen (respondiendo al sticker).
-
-📢 *Administración (Privado)*
-> '#anuncio [texto]' - Envía un comunicado oficial al grupo (Alencito).
-
-🪙 *Economía*
-> '#bal' - Revisa tus coins actuales.
-> '#work' - Trabaja para ganar coins (Cooldown: 30s).
-> '#daily' - Reclama tu recompensa diaria.
-
-🎉 *Interacción y Diversión*
-> '#hug' [@mención] - Dale un abrazo a alguien (con imagen).
-> '#kiss' [@mención] - Dale un beso a alguien (con imagen).
-> '#slap' [@mención] - Dale una bofetada a alguien (con imagen).
-
-🌐 *Sistema*
-> '#ping' - Mide el estado del bot.`;
+✨ '#s' - Crear sticker
+> '#toimg' - Sticker a imagen
+📢 '#anuncio' - Enviar comunicado
+🪙 '#bal' / '#work' / '#daily' - Economía
+🎉 '#hug' / '#kiss' / '#slap' - Interacción`;
 
             await sock.sendMessage(from, { text: menuText }, { quoted: m });
         }
 
-        // 3. Comando de Stickers (#s) con Sharp
+        // Stickers
         if (command === 's' || command === 'sticker') {
             const quotedMessage = m.message.extendedTextMessage?.contextInfo?.quotedMessage;
             const isMedia = messageType === 'imageMessage' || messageType === 'videoMessage';
             const isQuotedMedia = quotedMessage && (quotedMessage.imageMessage || quotedMessage.videoMessage);
 
-            if (!isMedia && !isQuotedMedia) {
-                return await sock.sendMessage(from, { text: '⚠️ Por favor, adjunta una imagen con el texto #s o responde a una foto con #s.' }, { quoted: m });
-            }
+            if (!isMedia && !isQuotedMedia) return;
 
             try {
-                await sock.sendMessage(from, { text: '⏳ Creando sticker...' }, { quoted: m });
                 const mediaMsg = isMedia ? m : { message: quotedMessage };
                 const buffer = await downloadMediaMessage(mediaMsg, 'buffer', {}, { logger: pino({ level: 'silent' }) });
-
                 const stickerBuffer = await sharp(buffer)
                     .resize(512, 512, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
                     .webp({ quality: 80 })
                     .toBuffer();
 
                 await sock.sendMessage(from, { sticker: stickerBuffer }, { quoted: m });
-            } catch (error) {
-                console.error('Error al crear el sticker:', error);
-                await sock.sendMessage(from, { text: '❌ Ocurrió un error al procesar el sticker.' }, { quoted: m });
-            }
+            } catch (error) {}
         }
 
-        // 4. Comando #toimg (Sticker a Imagen)
+        // ToImg
         if (command === 'toimg' || command === 'img') {
             const quotedMessage = m.message.extendedTextMessage?.contextInfo?.quotedMessage;
-            const isQuotedSticker = quotedMessage && quotedMessage.stickerMessage;
-
-            if (!isQuotedSticker) {
-                return await sock.sendMessage(from, { text: '⚠️ Por favor, responde a un sticker con el comando *#toimg* para convertirlo en imagen.' }, { quoted: m });
-            }
+            if (!quotedMessage?.stickerMessage) return;
 
             try {
-                await sock.sendMessage(from, { text: '⏳ Convirtiendo sticker a imagen...' }, { quoted: m });
-                const mediaMsg = { message: quotedMessage };
-                const buffer = await downloadMediaMessage(mediaMsg, 'buffer', {}, { logger: pino({ level: 'silent' }) });
-
-                const imageBuffer = await sharp(buffer)
-                    .png()
-                    .toBuffer();
-
-                await sock.sendMessage(from, { image: imageBuffer, caption: '✨ Aquí tienes tu imagen convertida desde el sticker.' }, { quoted: m });
-            } catch (error) {
-                console.error('Error al convertir sticker a imagen:', error);
-                await sock.sendMessage(from, { text: '❌ Ocurrió un error al convertir el sticker a imagen.' }, { quoted: m });
-            }
+                const buffer = await downloadMediaMessage({ message: quotedMessage }, 'buffer', {}, { logger: pino({ level: 'silent' }) });
+                const imageBuffer = await sharp(buffer).png().toBuffer();
+                await sock.sendMessage(from, { image: imageBuffer, caption: '✨ Convertido a imagen.' }, { quoted: m });
+            } catch (error) {}
         }
 
-        // 5. Comando #anuncio (Validación flexible para número o LID)
-        if (command === 'anuncio' || command === 'broadcast') {
-            const miLidOSender = '275028952228088'; // Tu LID detectado por el bot
-            const tuNumeroJid = '51924876085';     // Tu número alternativo
+        // Anuncio
+        if (command === 'anuncio') {
+            const tuLidOSender = '275028952228088';
             const groupId = '120363422057355283@g.us'; 
 
-            // Permite el acceso si el sender contiene tu LID o tu número
-            if (!sender.includes(miLidOSender) && !sender.includes(tuNumeroJid)) {
-                return await sock.sendMessage(from, { text: `⚠️ No tienes permisos para usar este comando.\n\n*(Debug detectado: ${sender})*` }, { quoted: m });
-            }
+            if (!sender.includes(tuLidOSender)) return;
 
             const anuncioTexto = args.join(' ');
-            if (!anuncioTexto) {
-                return await sock.sendMessage(from, { text: '⚠️ Escribe el mensaje que deseas enviar al grupo (ej: #anuncio Hola a todos).' }, { quoted: m });
-            }
+            if (!anuncioTexto) return;
 
             try {
                 await sock.sendMessage(groupId, { text: `📢 *ANUNCIO OFICIAL* 📢\n\n${anuncioTexto}` });
-                await sock.sendMessage(from, { text: '✅ ¡Anuncio enviado al grupo correctamente!' }, { quoted: m });
-            } catch (error) {
-                console.error('Error al enviar el anuncio:', error);
-                await sock.sendMessage(from, { text: '❌ Ocurrió un error al enviar el anuncio al grupo.' }, { quoted: m });
-            }
+                await sock.sendMessage(from, { text: '✅ ¡Enviado!' }, { quoted: m });
+            } catch (error) {}
         }
 
-        // 6. Economía: #bal
-        if (command === 'bal' || command === 'balance') {
+        // Economía
+        if (command === 'bal') {
             let user = await usersCollection.findOne({ jid: sender });
-            const coins = user ? user.coins : 0;
-            await sock.sendMessage(from, { text: `🪙 Tienes *${coins} coins* en tu cuenta.` }, { quoted: m });
+            await sock.sendMessage(from, { text: `🪙 Tienes *${user ? user.coins : 0} coins*.` }, { quoted: m });
         }
 
-        // 7. Economía: #work
         if (command === 'work' || command === 'w') {
             let user = await usersCollection.findOne({ jid: sender });
-            const earned = Math.floor(Math.random() * 500) + 100;
-
-            if (!user) {
-                await usersCollection.insertOne({ jid: sender, coins: earned });
-            } else {
-                await usersCollection.updateOne({ jid: sender }, { $inc: { coins: earned } });
-            }
-
-            await sock.sendMessage(from, { text: `💼 Trabajaste duro y ganaste *🪙 ${earned} coins*.` }, { quoted: m });
+            const earned = Math.floor(Math.random() * 400) + 100;
+            await usersCollection.updateOne({ jid: sender }, { $inc: { coins: earned } }, { upsert: true });
+            await sock.sendMessage(from, { text: `💼 Ganaste *🪙 ${earned} coins*.` }, { quoted: m });
         }
 
-        // 8. Economía: #daily
         if (command === 'daily') {
             let user = await usersCollection.findOne({ jid: sender });
-            const reward = 2000;
-
-            if (!user) {
-                await usersCollection.insertOne({ jid: sender, coins: reward, lastDaily: Date.now() });
-            } else {
-                const now = Date.now();
-                const last = user.lastDaily || 0;
-                if (now - last < 24 * 60 * 60 * 1000) {
-                    return await sock.sendMessage(from, { text: '⏳ Ya reclamaste tu recompensa diaria. Vuelve mañana.' }, { quoted: m });
-                }
-                await usersCollection.updateOne({ jid: sender }, { $inc: { coins: reward }, $set: { lastDaily: now } });
+            const now = Date.now();
+            if (user?.lastDaily && now - user.lastDaily < 86400000) {
+                return await sock.sendMessage(from, { text: '⏳ Ya reclamaste tu diario hoy.' }, { quoted: m });
             }
-
-            await sock.sendMessage(from, { text: `🎉 ¡Reclamaste tu recompensa diaria de *🪙 ${reward} coins*!` }, { quoted: m });
+            await usersCollection.updateOne({ jid: sender }, { $inc: { coins: 2000 }, $set: { lastDaily: now } }, { upsert: true });
+            await sock.sendMessage(from, { text: `🎉 ¡Reclamaste *🪙 2000 coins*!` }, { quoted: m });
         }
 
-        // 9. Reacciones con imágenes aleatorias (#hug, #kiss, #slap)
+        // Interacciones con Giphy API (o respaldos directos seguros)
         if (['hug', 'kiss', 'slap'].includes(command)) {
             const target = m.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0];
-            
-            if (!target) {
-                return await sock.sendMessage(from, { text: `⚠️ Debes mencionar a alguien para usar este comando (ej: #${command} @usuario).` }, { quoted: m });
-            }
+            if (!target) return await sock.sendMessage(from, { text: '⚠️ Menciona a alguien.' }, { quoted: m });
 
-            // Listas de imágenes aleatorias seguras (GIFs/Imágenes temáticas de anime/reacciones)
-            const mediaList = {
-                hug: [
-                    'https://media.giphy.com/media/od5H3PmEG5EVq/giphy.gif',
-                    'https://media.giphy.com/media/IRUb7GTCaPU8E/giphy.gif',
-                    'https://media.giphy.com/media/wnsgren9NtITS/giphy.gif'
-                ],
-                kiss: [
-                    'https://media.giphy.com/media/G3va31oEEnIkM/giphy.gif',
-                    'https://media.giphy.com/media/wANk38K6Wp3wDri6rC/giphy.gif',
-                    'https://media.giphy.com/media/wQmXrcw3Qxrq8/giphy.gif'
-                ],
-                slap: [
-                    'https://media.giphy.com/media/Gf3AUz3eBNbTW/giphy.gif',
-                    'https://media.giphy.com/media/3oKZISG9A6iJ8RSwAU/giphy.gif',
-                    'https://media.giphy.com/media/xUPGcx4qh3aEPkMc1O/giphy.gif'
-                ]
+            let mediaUrl = '';
+            try {
+                // Si tienes configurada tu API Key de Giphy gratuita en Render:
+                const apiKey = process.env.GIPHY_API_KEY;
+                if (apiKey) {
+                    const res = await axios.get(`https://api.giphy.com/v1/gifs/search?api_key=${apiKey}&q=${command}&limit=10&rating=g`);
+                    const gifs = res.data.data;
+                    if (gifs.length > 0) {
+                        const randomGif = gifs[Math.floor(Math.random() * gifs.length)];
+                        mediaUrl = randomGif.images.original.url;
+                    }
+                }
+            } catch (e) {}
+
+            // Lista de respaldo fija por si no usas API Key de Giphy
+            const backups = {
+                hug: 'https://media.giphy.com/media/od5H3PmEG5EVq/giphy.gif',
+                kiss: 'https://media.giphy.com/media/G3va31oEEnIkM/giphy.gif',
+                slap: 'https://media.giphy.com/media/Gf3AUz3eBNbTW/giphy.gif'
             };
 
-            const actionsText = {
-                hug: 'le dio un tierno abrazo 🫂 a',
-                kiss: 'le dio un apasionado beso 💋 a',
-                slap: 'le dio una fuerte bofetada 👋 a'
-            };
-
-            // Seleccionar una imagen aleatoria de la lista correspondiente
-            const randomImage = mediaList[command][Math.floor(Math.random() * mediaList[command].length)];
-            const textResponse = `@${sender.split('@')[0]} ${actionsText[command]} @${target.split('@')[0]}! ✨`;
+            const finalMedia = mediaUrl || backups[command];
+            const actionsText = { hug: 'un abrazo 🫂', kiss: 'un beso 💋', slap: 'una bofetada 👋' };
 
             await sock.sendMessage(from, { 
-                image: { url: randomImage }, 
-                caption: textResponse, 
+                image: { url: finalMedia }, 
+                caption: `@${sender.split('@')[0]} le dio ${actionsText[command]} a @${target.split('@')[0]}! ✨`, 
                 mentions: [sender, target] 
             }, { quoted: m });
         }
