@@ -488,17 +488,15 @@ async function connectToWhatsApp() {
         }
 
         if (command === 'genero') {
-            const tipo = args[0]?.toLowerCase();
-            if (!['hombre', 'mujer', 'cosa'].includes(tipo)) return await sock.sendMessage(from, { text: '⚠️ Usa: *hombre*, *mujer* o *cosa [nombre]*.' }, { quoted: m });
-            let val = tipo;
-            if (tipo === 'cosa') {
-                const nombre = args.slice(1).join(' ');
-                if (!nombre) return await sock.sendMessage(from, { text: '⚠️ Ponle un nombre a la cosa. Ej: *#genero cosa tostadora*.' }, { quoted: m });
-                val = `cosa: ${nombre}`;
+            const generoTexto = args.join(' ');
+            if (!generoTexto) {
+                return await sock.sendMessage(from, { text: '⚠️ Escribe el género que deseas configurar. Ej: *#genero masculino*, *#genero femenino* o *#genero trans*' }, { quoted: m });
             }
-            await usersCollection.updateOne({ jid: sender }, { $set: { genero: val } }, { upsert: true });
-            return await sock.sendMessage(from, { text: `✅ Género actualizado a: *${val}*.` }, { quoted: m });
+            
+            await usersCollection.updateOne({ jid: sender }, { $set: { genero: generoTexto } }, { upsert: true });
+            return await sock.sendMessage(from, { text: `✅ Género actualizado a: *${generoTexto}*.` }, { quoted: m });
         }
+
 
         if (command === 'casarse' || command === 'matrimonio') {
             const target = m.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0];
