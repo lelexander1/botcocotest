@@ -262,11 +262,12 @@ async function connectToWhatsApp() {
                 `🖼️ *#imagen [tema]*\n   ↳ Busca y envía una foto aleatoria de alta calidad.\n\n` +
                 `📦 *#still [texto / ver / borrar]*\n   ↳ Tu banco personal de notas o frases guardadas.\n\n` +
                 `👤 *#edad [núm], #frase [txt], #setsticker*\n   ↳ Configura tu edad, frase personal y sticker de perfil.\n\n` +
-                `🔗 *#facebook, #instagram, #discord, #spotify, #x [link]*\n   ↳ Añade enlaces hipervinculados de tus redes a tu perfil.\n\n` +
+                `🔗 *#facebook, #instagram, #discord, #spotify, #x [link]*\n   ↳ Añade tus redes sociales a tu tarjeta de perfil.\n\n` +
                 `👁️ *#perfil [@usuario]*\n   ↳ Muestra tu tarjeta de perfil con redes sociales y sticker ID.\n\n` +
-                `⏰ *#recordatorio [tiempo] [mensaje]*\n   ↳ Programa un recordatorio privado.\n\n` +
+                `⏰ *#recordatorio o #rec [tiempo/fecha] [mensaje]*\n   ↳ Programa un recordatorio privado o fecha exacta.\n\n` +
+                `📢 *#recordatorio-grupo o #recg [tiempo/fecha] [mensaje]*\n   ↳ Programa un recordatorio que sonará para todo el grupo.\n\n` +
                 `📋 *#misrecordatorios / #borrarrec [id]*\n   ↳ Administra tus recordatorios pendientes.\n\n` +
-                `🎨 *#s / #gif / #toimg*\n   ↳ Crea stickers de imágenes, videos animados o pasa stickers a foto.\n\n` +
+                `🎨 *#s / #gif / #toimg*\n   ↳ Crea stickers limpios (sin estirar ni marcas), videos animados o pasa stickers a foto.\n\n` +
                 `🥷 *#kill [@usuario]*\n   ↳ Expulsa a un usuario con un GIF (Solo Admins).\n\n` +
                 `📊 *#consumo / #topmsg / #lowmsg*\n   ↳ Muestra recursos del servidor y ranking de mensajes.\n\n` +
                 `⚧️ *#genero [texto]*\n   ↳ Actualiza tu género libremente.\n\n` +
@@ -419,6 +420,82 @@ async function connectToWhatsApp() {
             }
         }
 
+        // --- SISTEMA DE RECORDATORIOS (PRIVADOS Y GRUPALES CON FECHA O TIEMPO) ---
+        if (command === 'recordatorio' || command === 'rec' || command === 'recordatorio-grupo' || command === 'recg') {
+            const esGrupal = command.includes('grupo') || command === 'recg';
+            const destinoJid = esGrupal ? from : sender;
+
+            if (esGrupal && !from.endsWith('@g.us')) {
+                return await sock.sendMessage(from, { text: '⚠️ El comando de recordatorio grupal solo se puede usar dentro de un grupo.' }, { quoted: m });
+            }
+
+            const arg1 = args[0];
+            const arg2 = args[1];
+
+            if (!arg1 || !arg2) {
+                return await sock.sendMessage(from, { 
+                    text: '⚠️ Formato incorrecto.\n\n' +
+                          '• *Por tiempo (ej: 10m, 2h):*\n  `#recordatorio 10m Reunión`\n' +
+                          '• *Por fecha exacta (ej: 10/09 a las 15:30):*\n  `#recordatorio 10/09 15:30 Ir al doctor`\n' +
+                          '• *Para todo el grupo:*\n  `#recg 1h Alerta general`' 
+                }, { quoted: m });
+            }
+
+            let fechaEjecucion = null;
+            let tiempoTextoMostrar = '';
+            let mensajeRec = '';
+
+            if (arg1.includes('/')) {
+                const [dia, mes] = arg1.split('/').map(Number);
+                const horaStr = arg2;
+                
+                if (!horaStr || !horaStr.includes(':')) {
+                    return await sock.sendMessage(from, { text: '⚠️ Formato de hora inválido. Usa *HH:mm* (ej: 18:30).' }, { quoted: m });
+                }
+
+                const [hora, minuto] = horaStr.split(':').map(Number);
+                const hoyPeru = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Lima" }));
+                
+                fechaEjecucion = new Date(hoyPeru.getFullYear(), mes - 1, dia, hora, minuto, 0);
+                if (fechaEjecucion < hoyPeru) {
+                    fechaEjecucion.setFullYear(hoyPeru.getFullYear() + 1);
+                }
+
+                tiempoTextoMostrar = `el ${arg1} a las ${arg2}`;
+                mensajeRec = args.slice(2).join(' ');
+            } else {
+                const match = arg1.match(/^(\d+)([smh])$/);
+                if (!match) {
+                    return await sock.sendMessage(from, { text: '⚠️ Unidad de tiempo inválida. Usa *s*, *m*, *h* o una fecha *DD/MM*.' }, { quoted: m });
+                }
+
+                const cantidad = parseInt(match[1]);
+                const unidad = match[2];
+                let multiplicador = 1000;
+                if (unidad === 'm') multiplicador = 60 * 1000;
+                if (unidad === 'h') multiplicador = 60 * 60 * 1000;
+
+                fechaEjecucion = new Date(Date.now() + cantidad * multiplicador);
+                tiempoTextoMostrar = arg1;
+                mensajeRec = args.slice(1).join(' ');
+            }
+
+            if (!mensajeRec) {
+                return await sock.sendMessage(from, { text: '⚠️ Te faltó escribir el mensaje del recordatorio.' }, { quoted: m });
+            }
+
+            const resultado = await remindersCollection.insertOne({ 
+                userJid: sender, 
+                targetJid: destinoJid,
+                isGroup: esGrupal,
+                message: mensajeRec, 
+                executeAt: fechaEjecucion, 
+                createdAt: new Date() 
+            });
+
+            const tipoDestinoTxt = esGrupal ? 'en este grupo' : 'por mensaje privado';
+            return await sock.sendMessage(from, { text: `✅ ¡Recordatorio programado con éxito!\nTe avisaré ${tipoDestinoTxt} ${tiempoTextoMostrar} (ID: \`${resultado.insertedId}\`).` }, { quoted: m });
+        }
 
         if (command === 'kill' || command === 'ban') {
             if (!from.endsWith('@g.us')) return await sock.sendMessage(from, { text: '⚠️ Este comando solo se puede usar en grupos.' }, { quoted: m });
@@ -589,6 +666,7 @@ async function connectToWhatsApp() {
             } else { await sock.sendMessage(from, { text: 'ℹ️ El usuario no tiene timeout activo.' }, { quoted: m }); }
         }
 
+        // --- COMANDO STICKER CORREGIDO (SIN DISTORSIÓN Y SIN NOMBRE DE PACK) ---
         if (command === 's' || command === 'sticker') {
             const q = m.message.extendedTextMessage?.contextInfo?.quotedMessage;
             const isImage = messageType === 'imageMessage' || q?.imageMessage;
@@ -602,28 +680,25 @@ async function connectToWhatsApp() {
                 const targetMsg = q ? { message: q } : m;
                 const buf = await downloadMediaMessage(targetMsg, 'buffer', {}, { logger: pino({ level: 'silent' }) });
 
-                // Procesamos la imagen con Sharp para que mantenga sus proporciones sin estirarse
                 const resizedImageBuffer = await sharp(buf)
                     .resize(512, 512, {
-                        fit: 'contain', // Mantiene la proporción original sin estirar
-                        background: { r: 0, g: 0, b: 0, alpha: 0 } // Fondo transparente
+                        fit: 'contain',
+                        background: { r: 0, g: 0, b: 0, alpha: 0 }
                     })
                     .png()
                     .toBuffer();
 
-                // Creamos el sticker sin pack ni autor para que no muestre nombres
                 const sticker = new Sticker(resizedImageBuffer, {
-                    pack: '',       // Sin nombre de pack
-                    author: '',     // Sin autor
-                    type: StickerTypes.DEFAULT, // <--- Asegúrate de que aquí termine con coma
+                    pack: '',
+                    author: '',
+                    type: StickerTypes.DEFAULT,
                     quality: 80
                 });
 
                 const stickerBuffer = await sticker.toBuffer();
                 await sock.sendMessage(from, { sticker: stickerBuffer }, { quoted: m });
-            } catch (err) {
-                console.error('Error procesando sticker:', err);
-                await sock.sendMessage(from, { text: '❌ No se pudo procesar la imagen a sticker.' }, { quoted: m });
+            } catch {
+                await sock.sendMessage(from, { text: '❌ No se pudo procesar la imagen.' }, { quoted: m });
             }
         }
 
@@ -646,10 +721,9 @@ async function connectToWhatsApp() {
                 }
 
                 const sticker = new Sticker(buf, {
-                    pack: 'CocoBot Pack',
-                    author: 'Alencito/Gabo',
+                    pack: '',
+                    author: '',
                     type: StickerTypes.ANIMATED,
-                    categories: ['🤩', '🎉'],
                     quality: 50,
                     fps: 15
                 });
@@ -687,7 +761,7 @@ async function connectToWhatsApp() {
                 let finalTxt = `📢 *ANUNCIO OFICIAL* 📢\n\n${text}`;
                 if (from.endsWith('@g.us')) {
                     const meta = await sock.groupMetadata(from);
-                    mentions = meta.participants.map(p => p.id); // Extrae todos los miembros para etiquetarlos de forma oculta
+                    mentions = meta.participants.map(p => p.id);
                 }
                 await sock.sendMessage(from, { text: finalTxt, mentions });
                 const sticker = await obtenerGifAleatorio('attention alert news announcement', 'https://media.giphy.com/media/xT9IgzoKnwFNmISR9I/giphy.gif');
@@ -734,10 +808,23 @@ function iniciarVerificadorRecordatorios(sock, remindersCollection) {
 
             for (const rec of pendientes) {
                 try {
-                    await sock.sendMessage(rec.userJid, { text: `⏰ *¡RECORDATORIO!* ⏰\n\nDijiste que te recordara esto:\n📌 *${rec.message}*` });
+                    if (rec.isGroup) {
+                        const meta = await sock.groupMetadata(rec.targetJid);
+                        const mentions = meta.participants.map(p => p.id);
+                        
+                        await sock.sendMessage(rec.targetJid, { 
+                            text: `⏰ *¡RECORDATORIO GRUPAL!* ⏰\n\n📌 *${rec.message}*`, 
+                            mentions 
+                        });
+                    } else {
+                        await sock.sendMessage(rec.targetJid, { 
+                            text: `⏰ *¡RECORDATORIO!* ⏰\n\nDijiste que te recordara esto:\n📌 *${rec.message}*` 
+                        });
+                    }
+                    
                     await remindersCollection.deleteOne({ _id: rec._id });
                 } catch (err) {
-                    console.error(`Error al enviar recordatorio a ${rec.userJid}:`, err);
+                    console.error(`Error al enviar recordatorio:`, err);
                 }
             }
         } catch (e) {
