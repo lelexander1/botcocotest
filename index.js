@@ -601,17 +601,29 @@ async function connectToWhatsApp() {
             try {
                 const targetMsg = q ? { message: q } : m;
                 const buf = await downloadMediaMessage(targetMsg, 'buffer', {}, { logger: pino({ level: 'silent' }) });
-                const sticker = new Sticker(buf, {
-                    pack: 'CocoBot Pack',
-                    author: 'Alencito/Gabo',
-                    type: StickerTypes.DEFAULT,
-                    categories: ['🤩', '🎉'],
+
+                // Procesamos la imagen con Sharp para que mantenga sus proporciones sin estirarse
+                const resizedImageBuffer = await sharp(buf)
+                    .resize(512, 512, {
+                        fit: 'contain', // Mantiene la proporción original sin estirar
+                        background: { r: 0, g: 0, b: 0, alpha: 0 } // Fondo transparente
+                    })
+                    .png()
+                    .toBuffer();
+
+                // Creamos el sticker sin pack ni autor para que no muestre nombres
+                const sticker = new Sticker(resizedImageBuffer, {
+                    pack: '',       // Sin nombre de pack
+                    author: '',     // Sin autor
+                    type: StickerTypes.DEFAULT, // <--- Asegúrate de que aquí termine con coma
                     quality: 80
                 });
+
                 const stickerBuffer = await sticker.toBuffer();
                 await sock.sendMessage(from, { sticker: stickerBuffer }, { quoted: m });
-            } catch {
-                await sock.sendMessage(from, { text: '❌ No se pudo procesar la imagen.' }, { quoted: m });
+            } catch (err) {
+                console.error('Error procesando sticker:', err);
+                await sock.sendMessage(from, { text: '❌ No se pudo procesar la imagen a sticker.' }, { quoted: m });
             }
         }
 
