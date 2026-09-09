@@ -193,13 +193,16 @@ async function connectToWhatsApp() {
         const sender = m.key.participant || from;
         const messageType = Object.keys(m.message)[0];
 
-        try {
-            await usersCollection.updateOne(
-                { jid: sender }, 
-                { $inc: { messageCount: 1 }, $setOnInsert: { coins: 0 } }, 
-                { upsert: true }
-            );
-        } catch {}
+        // --- CONTADOR DE MENSAJES POR GRUPO ---
+        if (from.endsWith('@g.us')) {
+            try {
+                await usersCollection.updateOne(
+                    { jid: sender, groupId: from }, 
+                    { $inc: { messageCount: 1 }, $setOnInsert: { coins: 0 } }, 
+                    { upsert: true }
+                );
+            } catch {}
+        }
 
         // --- SISTEMA ANTISPAM DE STICKERS ---
         if (from.endsWith('@g.us') && messageType === 'stickerMessage') {
@@ -270,7 +273,7 @@ async function connectToWhatsApp() {
                 `📋 *#misrecordatorios / #borrarrec [id]*\n   ↳ Administra tus recordatorios pendientes.\n\n` +
                 `🎨 *#s / #gif / #toimg*\n   ↳ Crea stickers limpios (sin estirar ni marcas), videos animados o pasa stickers a foto.\n\n` +
                 `🥷 *#kill [@usuario]*\n   ↳ Expulsa a un usuario con un GIF (Solo Admins).\n\n` +
-                `📊 *#consumo / #topmsg / #lowmsg*\n   ↳ Muestra recursos del servidor y ranking de mensajes.\n\n` +
+                `📊 *#consumo / #topmsg (por grupo) / #lowmsg (por grupo)*\n   ↳ Muestra recursos y el ranking de mensajes independiente por cada grupo.\n\n` +
                 `⚧️ *#genero [texto]*\n   ↳ Actualiza tu género libremente.\n\n` +
                 `💍 *#casarse [@usuario] / #aceptar*\n   ↳ Propón matrimonio y cásate.\n\n` +
                 `🎂 *#cumple DD/MM / #cumples*\n   ↳ Registra tu cumpleaños y consulta festejos.\n\n` +
@@ -280,12 +283,11 @@ async function connectToWhatsApp() {
             return await sock.sendMessage(from, { text: menu }, { quoted: m });
         }
 
-        // --- NUEVO COMANDO #SI (PROCESADO POR IA CON RESPUESTA INGENIOSA / "NO") ---
         if (command === 'si') {
             try {
                 const promptIa = "El usuario acaba de decir o invocar la palabra '#si'. Analiza esta palabra con sarcasmo o humor y respóndele de manera tajante, creativa o generando un concepto contrario como un rotundo 'No' o algo gracioso relacionado.";
                 const res = await ai.models.generateContent({ model: 'gemini-3.6-flash', contents: promptIa });
-                return await sock.sendMessage(from, { text: `🤖 *CocoBot IA*:\n\n${res.text || '¡No!'}` }, { quoted: m });
+                return await sock.sendMessage(from, { text: `${res.text || '¡No!'}` }, { quoted: m });
             } catch {
                 return await sock.sendMessage(from, { text: '❌ ¡No!' }, { quoted: m });
             }
@@ -543,10 +545,9 @@ async function connectToWhatsApp() {
                 }
             }
 
-            const totalMem = os.totalmem();
-            const freeMem = os.freemem();
-            const usedMem = totalMem - freeMem;
-            const formatoMB = (bytes) => (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+            // Memoria real consumida exclusivamente por el proceso de Node.js (Bot)
+            const memUsadaByBot = process.memoryUsage().rss / (1024 * 1024);
+            const formatoMB = (mb) => mb.toFixed(2) + ' MB';
 
             let mongoStatus = '🟢 Conectado (Óptimo)';
             let mongoLatencyMs = 0;
@@ -560,9 +561,9 @@ async function connectToWhatsApp() {
 
             const statsText = `📊 *MONITOREO DE RECURSOS - COCOBOT* 📊\n` +
                 `────────────────────────\n` +
-                `🖥️ *Hosting:* Render (Cloud Instance)\n` +
-                `🧠 *Memoria RAM Usada:* ${formatoMB(usedMem)} / ${formatoMB(totalMem)}\n` +
-                `⚡ *CPU Cores:* ${os.cpus().length} Núcleos\n` +
+                `🖥️ *Hosting:* Render (Cloud Free Tier)\n` +
+                `🧠 *RAM Usada (Bot Node.js):* ${formatoMB(memUsadaByBot)}\n` +
+                `⚡ *CPU Cores (Sistema):* ${os.cpus().length} Núcleos\n` +
                 `🗄️ *Base de Datos (MongoDB Atlas):*\n` +
                 `   • Estado: ${mongoStatus}\n` +
                 `   • Latencia API: ${mongoLatencyMs} ms\n` +
@@ -574,22 +575,28 @@ async function connectToWhatsApp() {
             return await sock.sendMessage(from, { text: statsText }, { quoted: m });
         }
 
+        // --- COMANDO TOP DE MENSAJES POR GRUPO (#TOPMSG) ---
         if (command === 'topmsg' || command === 'masactivos') {
-            const topUsers = await usersCollection.find({ messageCount: { $exists: true } }).sort({ messageCount: -1 }).limit(5).toArray();
-            if (topUsers.length === 0) return await sock.sendMessage(from, { text: '📊 Aún no hay registros de mensajes.' }, { quoted: m });
+            if (!from.endsWith('@g.us')) return await sock.sendMessage(from, { text: '⚠️ Este comando solo se puede usar en grupos.' }, { quoted: m });
 
-            let txt = '🏆 *TOP 5 - USUARIOS QUE MÁS ESCRIBEN* 🏆\n\n';
+            const topUsers = await usersCollection.find({ groupId: from, messageCount: { $exists: true } }).sort({ messageCount: -1 }).limit(5).toArray();
+            if (topUsers.length === 0) return await sock.sendMessage(from, { text: '📊 Aún no hay registros de mensajes en este grupo.' }, { quoted: m });
+
+            let txt = '🏆 *TOP 5 - USUARIOS QUE MÁS ESCRIBEN (EN ESTE GRUPO)* 🏆\n\n';
             topUsers.forEach((u, i) => {
                 txt += `${i + 1}. @${u.jid.split('@')[0]} ➡️ *${u.messageCount || 0} mensajes*\n`;
             });
             return await sock.sendMessage(from, { text: txt, mentions: topUsers.map(u => u.jid) }, { quoted: m });
         }
 
+        // --- COMANDO MENOS ACTIVOS POR GRUPO (#LOWMSG) ---
         if (command === 'lowmsg' || command === 'menosactivos') {
-            const lowUsers = await usersCollection.find({ messageCount: { $exists: true } }).sort({ messageCount: 1 }).limit(5).toArray();
-            if (lowUsers.length === 0) return await sock.sendMessage(from, { text: '📊 Aún no hay registros de mensajes.' }, { quoted: m });
+            if (!from.endsWith('@g.us')) return await sock.sendMessage(from, { text: '⚠️ Este comando solo se puede usar en grupos.' }, { quoted: m });
 
-            let txt = '💤 *TOP 5 - USUARIOS QUE MENOS ESCRIBEN* 💤\n\n';
+            const lowUsers = await usersCollection.find({ groupId: from, messageCount: { $exists: true } }).sort({ messageCount: 1 }).limit(5).toArray();
+            if (lowUsers.length === 0) return await sock.sendMessage(from, { text: '📊 Aún no hay registros de mensajes en este grupo.' }, { quoted: m });
+
+            let txt = '💤 *TOP 5 - USUARIOS QUE MENOS ESCRIBEN (EN ESTE GRUPO)* 💤\n\n';
             lowUsers.forEach((u, i) => {
                 txt += `${i + 1}. @${u.jid.split('@')[0]} ➡️ *${u.messageCount || 0} mensajes*\n`;
             });
