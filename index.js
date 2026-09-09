@@ -204,6 +204,43 @@ async function connectToWhatsApp() {
             } catch {}
         }
 
+        // --- COMANDO DE CRIPTOMONEDAS (#CRYPTO [moneda]) ---
+        if (command === 'crypto' || command === 'precio' || command === 'cripto') {
+            const moneda = args[0]?.toLowerCase() || 'bitcoin';
+            try {
+                await sock.sendMessage(from, { text: `🔍 Consultando precio de *${moneda}*...` }, { quoted: m });
+                
+                // Configurando la petición con la API Key de CoinGecko si existe
+                const headers = process.env.COINGECKO_API_KEY ? { 'x-cg-demo-api-key': process.env.COINGECKO_API_KEY } : {};
+                
+                const url = `https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(moneda)}&vs_currencies=usd,eur&include_24hr_change=true`;
+                const response = await axios.get(url, { headers });
+                const data = response.data;
+
+                if (!data[moneda]) {
+                    return await sock.sendMessage(from, { text: `❌ No se encontró información para "${moneda}". Prueba con: *#crypto bitcoin*, *#crypto ethereum*, *#crypto solana*...` }, { quoted: m });
+                }
+
+                const precioUsd = data[moneda].usd;
+                const precioEur = data[moneda].eur;
+                const cambio24h = data[moneda].usd_24h_change?.toFixed(2) || 0;
+                const iconoCambio = cambio24h >= 0 ? '📈 🟢' : '📉 🔴';
+
+                const textoCrypto = `🪙 *PRECIO DE MERCADO: ${moneda.toUpperCase()}* 🪙\n` +
+                    `────────────────────────\n` +
+                    `💵 *USD:* $${precioUsd.toLocaleString()}\n` +
+                    `💶 *EUR:* €${precioEur.toLocaleString()}\n` +
+                    `${iconoCambio} *Cambio 24h:* ${cambio24h}%\n` +
+                    `────────────────────────\n` +
+                    `🌐 *Fuente:* CoinGecko API`;
+
+                return await sock.sendMessage(from, { text: textoCrypto }, { quoted: m });
+            } catch (err) {
+                return await sock.sendMessage(from, { text: '❌ Error al consultar la API de CoinGecko.' }, { quoted: m });
+            }
+        }
+
+
         // --- SISTEMA ANTISPAM DE STICKERS ---
         if (from.endsWith('@g.us') && messageType === 'stickerMessage') {
             const ahora = Date.now();
@@ -278,6 +315,7 @@ async function connectToWhatsApp() {
                 `💍 *#casarse [@usuario] / #aceptar*\n   ↳ Propón matrimonio y cásate.\n\n` +
                 `🎂 *#cumple DD/MM / #cumples*\n   ↳ Registra tu cumpleaños y consulta festejos.\n\n` +
                 `⚙️ *#setwelcome / #setgoodbye / #untimeout*\n   ↳ Configura bienvenidas, despedidas y quita castigos.\n\n` +
+                `🪙 *#crypto [bitcoin/ethereum/etc.]*\n   ↳ Consulta precios y variación de criptomonedas en tiempo real.\n\n` +
                 `🪙 *#bal / #work / #daily / #flip / #del / #anuncio*\n   ↳ Economía, juegos, moderación y anuncios a todos (ocultos).`;
 
             return await sock.sendMessage(from, { text: menu }, { quoted: m });
