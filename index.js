@@ -390,19 +390,12 @@ async function connectToWhatsApp() {
 
             const redes = userData.redes || {};
             let redesTxt = '';
-            
-            // Función para formatear enlaces limpios y cortos visualmente
-            const formatearLink = (url, nombreRed) => {
-                if (!url) return '';
-                let linkFinal = url.startsWith('http') ? url : `https://${nombreRed}.com/${url}`;
-                return `🔗 *[Abrir ${nombreRed.charAt(0).toUpperCase() + nombreRed.slice(1)}](${linkFinal})*`; // Formato amigable
-            };
 
-            if (redes.facebook) redesTxt += `📘 *Facebook:* ${formatearLink(redes.facebook, 'facebook')}\n`;
-            if (redes.instagram) redesTxt += `📸 *Instagram:* ${formatearLink(redes.instagram, 'instagram')}\n`;
-            if (redes.discord) redesTxt += `🎮 *Discord:* \`${redes.discord}\`\n`;
-            if (redes.spotify) redesTxt += `🎧 *Spotify:* ${formatearLink(redes.spotify, 'spotify')}\n`;
-            if (redes.x) redesTxt += `✖️ *X (Twitter):* ${formatearLink(redes.x, 'x')}\n`;
+            if (redes.facebook) redesTxt += `📘 *Facebook:* ${redes.facebook}\n`;
+            if (redes.instagram) redesTxt += `📸 *Instagram:* ${redes.instagram}\n`;
+            if (redes.discord) redesTxt += `🎮 *Discord:* ${redes.discord}\n`;
+            if (redes.spotify) redesTxt += `🎧 *Spotify:* ${redes.spotify}\n`;
+            if (redes.x) redesTxt += `✖️ *X (Twitter):* ${redes.x}\n`;
 
             const perfilTxt = `👤 *PERFIL DE USUARIO* 👤\n` +
                 `────────────────────────\n` +
