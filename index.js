@@ -390,11 +390,19 @@ async function connectToWhatsApp() {
 
             const redes = userData.redes || {};
             let redesTxt = '';
-            if (redes.facebook) redesTxt += `📘 *Facebook:* ${redes.facebook.startsWith('http') ? redes.facebook : 'https://facebook.com/' + redes.facebook}\n`;
-            if (redes.instagram) redesTxt += `📸 *Instagram:* ${redes.instagram.startsWith('http') ? redes.instagram : 'https://instagram.com/' + redes.instagram}\n`;
-            if (redes.discord) redesTxt += `🎮 *Discord:* ${redes.discord}\n`;
-            if (redes.spotify) redesTxt += `🎧 *Spotify:* ${redes.spotify}\n`;
-            if (redes.x) redesTxt += `✖️ *X (Twitter):* ${redes.x.startsWith('http') ? redes.x : 'https://x.com/' + redes.x}\n`;
+            
+            // Función para formatear enlaces limpios y cortos visualmente
+            const formatearLink = (url, nombreRed) => {
+                if (!url) return '';
+                let linkFinal = url.startsWith('http') ? url : `https://${nombreRed}.com/${url}`;
+                return `🔗 *[Abrir ${nombreRed.charAt(0).toUpperCase() + nombreRed.slice(1)}](${linkFinal})*`; // Formato amigable
+            };
+
+            if (redes.facebook) redesTxt += `📘 *Facebook:* ${formatearLink(redes.facebook, 'facebook')}\n`;
+            if (redes.instagram) redesTxt += `📸 *Instagram:* ${formatearLink(redes.instagram, 'instagram')}\n`;
+            if (redes.discord) redesTxt += `🎮 *Discord:* \`${redes.discord}\`\n`;
+            if (redes.spotify) redesTxt += `🎧 *Spotify:* ${formatearLink(redes.spotify, 'spotify')}\n`;
+            if (redes.x) redesTxt += `✖️ *X (Twitter):* ${formatearLink(redes.x, 'x')}\n`;
 
             const perfilTxt = `👤 *PERFIL DE USUARIO* 👤\n` +
                 `────────────────────────\n` +
@@ -417,6 +425,7 @@ async function connectToWhatsApp() {
                 } catch {}
             }
         }
+
 
         if (command === 'kill' || command === 'ban') {
             if (!from.endsWith('@g.us')) return await sock.sendMessage(from, { text: '⚠️ Este comando solo se puede usar en grupos.' }, { quoted: m });
