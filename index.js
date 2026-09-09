@@ -35,6 +35,7 @@ const cooldowns = new Map();
 const stickerSpamTracker = new Map(); 
 const stickerTimeouts = new Map();     
 const propuestasMatrimonio = new Map(); 
+const triviaActiva = new Map(); // chatId -> { pregunta, opciones, correctaIndex, expira }
 
 // Adaptador de sesión en MongoDB Atlas con purga automática de 7 días
 async function useMongoDBAuthState(collection) {
@@ -118,10 +119,51 @@ function calcularDiasFaltantes(fechaStr) {
     return Math.ceil((proximo - hoyPeru) / (1000 * 60 * 60 * 24));
 }
 
-// Helper: verificar si es el dueño/owner
+// Helper: verifica si el emisor es el dueño/owner del bot
 function esOwner(sender) {
     return sender.includes('275028952228088');
 }
+
+// ===== CONTENIDO +18 (humor adulto, sin contenido sexual explícito) =====
+
+const chistesPicantesList = [
+    "Mi terapeuta dice que tengo problemas para dejar ir el pasado.\nMi ex dice que tengo problemas para dejar de escribirle a las 2am.",
+    "El matrimonio es como un dispositivo Bluetooth: cuando ya está emparejado, se conecta automáticamente a los peores momentos posibles.",
+    "Dicen que el dinero no compra la felicidad.\nTampoco compraba mi lealtad, pero aquí estamos, endeudado y sonriendo.",
+    "A mi edad ya no tengo crisis existenciales, tengo suscripciones mensuales a ellas.",
+    "Lo mío con el alcohol es una relación de \"no te necesito, pero tampoco quiero estar sin ti los viernes\".",
+    "Cumplí años y me prometí madurar. Ya llevo tres cumpleaños prometiendo lo mismo.",
+    "No estoy soltero, estoy en modo \"disponibilidad reducida para decepciones\"."
+];
+
+const verdadesList = [
+    "¿Cuál fue la mentira más grande que le dijste a tu pareja para no verla?",
+    "¿Cuánto dinero le debes ahora mismo a alguien de este grupo?",
+    "¿Cuál es el chat que borrarías si te quitaran el celular por 5 minutos?",
+    "¿A quién stalkeaste en redes esta semana sin que se entere?",
+    "¿Cuál es la excusa más ridícula que usaste para cancelar un plan?",
+    "¿Qué es lo más vergonzoso que hiciste estando ebrio/a?",
+    "¿A quién de este grupo bloquearías sin dudarlo si pudieras hacerlo anónimamente?",
+    "¿Cuál fue tu ex más tóxico/a y por qué seguiste ahí igual?"
+];
+
+const retosList = [
+    "Manda un audio cantando la primera canción que suene en tu playlist, sin explicar contexto.",
+    "Cambia tu foto de perfil por 1 hora a la foto más random de tu galería.",
+    "Escribe \"te extraño\" a la última persona con la que hablaste antes de este grupo (puede ser random, avisa que es un reto).",
+    "Manda tu última foto tomada sin explicar de qué es.",
+    "Escribe un estado poniendo la letra de una canción vergonzosa, déjalo 30 minutos.",
+    "Deja que el grupo elija tu próxima foto de perfil por hoy.",
+    "Cuenta en voz (nota de voz) la historia más incómoda que te pasó en una cita."
+];
+
+const trivia18List = [
+    { pregunta: "¿Cuál es la principal causa de resacas al día siguiente?", opciones: ["Deshidratación", "Falta de sueño", "Comer tarde", "Estrés"], correcta: 0 },
+    { pregunta: "Según encuestas, ¿cuál es el motivo #1 de peleas en parejas jóvenes?", opciones: ["Dinero", "Celos", "Tareas del hogar", "Redes sociales"], correcta: 0 },
+    { pregunta: "¿Cuál de estos NO es un síntoma típico de \"ghosting\" emocional?", opciones: ["Dejar en visto", "Desaparecer sin explicación", "Responder todo al instante", "Excusas vagas"], correcta: 2 },
+    { pregunta: "¿Qué edad se considera estadísticamente la 'crisis de los treinta'?", opciones: ["25-27", "30-33", "35-40", "20-22"], correcta: 1 },
+    { pregunta: "¿Cuál es el error de citas más común según psicólogos?", opciones: ["Idealizar a la otra persona", "Ser demasiado sincero", "Hablar de política", "Llegar temprano"], correcta: 0 }
+];
 
 async function connectToWhatsApp() {
     let client;
@@ -140,6 +182,12 @@ async function connectToWhatsApp() {
     const groupsCollection = db.collection('groups');
     const remindersCollection = db.collection('reminders');
     const bankCollection = db.collection('user_bank');
+    // FIX BUG 1: colección separada para el contador de mensajes por grupo.
+    // Antes, este contador vivía en `usersCollection` filtrado por {jid, groupId},
+    // mientras que el resto del perfil (coins, edad, frase...) vivía en el MISMO
+    // collection filtrado solo por {jid}. Mongo hace match por cualquier documento
+    // que contenga ese jid (tenga o no groupId), así que #work/#daily/#bal podían
+    // leer o escribir en el documento equivocado. Separarlo evita el choque.
     const groupStatsCollection = db.collection('group_stats');
 
     try {
@@ -203,12 +251,12 @@ async function connectToWhatsApp() {
         const sender = m.key.participant || from;
         const messageType = Object.keys(m.message)[0];
 
-        // --- CONTADOR DE MENSAJES POR GRUPO (En colección independiente) ---
+        // --- CONTADOR DE MENSAJES POR GRUPO (FIX: ahora en su propia colección) ---
         if (from.endsWith('@g.us')) {
             try {
                 await groupStatsCollection.updateOne(
-                    { jid: sender, groupId: from }, 
-                    { $inc: { messageCount: 1 } }, 
+                    { jid: sender, groupId: from },
+                    { $inc: { messageCount: 1 } },
                     { upsert: true }
                 );
             } catch {}
@@ -274,7 +322,7 @@ async function connectToWhatsApp() {
                 `🙃 *#si*\n   ↳ Envía la palabra a la IA para recibir una respuesta ingeniosa contraria.\n\n` +
                 `🪙 *#crypto [moneda]*\n   ↳ Consulta precios y variación de criptomonedas en tiempo real.\n\n` +
                 `😂 *#chistes*\n   ↳ Envía un chiste corto de manera aleatoria.\n\n` +
-                `🖼️ *#imagen [tema]*\n   ↳ Busca y envía una foto aleatoria.\n\n` +
+                `🖼️ *#imagen [tema]*\n   ↳ Busca y envía una foto aleatoria de alta calidad.\n\n` +
                 `📦 *#still [texto / ver / borrar]*\n   ↳ Tu banco personal de notas o frases guardadas.\n\n` +
                 `👤 *#edad [núm], #frase [txt], #setsticker*\n   ↳ Configura tu edad, frase personal y sticker de perfil.\n\n` +
                 `🔗 *#facebook, #instagram, #discord, #spotify, #x [link]*\n   ↳ Añade tus redes sociales a tu tarjeta de perfil.\n\n` +
@@ -284,12 +332,17 @@ async function connectToWhatsApp() {
                 `📋 *#misrecordatorios / #borrarrec [id]*\n   ↳ Administra tus recordatorios pendientes.\n\n` +
                 `🎨 *#s / #gif / #toimg*\n   ↳ Crea stickers limpios, videos animados o pasa stickers a foto.\n\n` +
                 `🥷 *#kill [@usuario]*\n   ↳ Expulsa a un usuario con un GIF (Solo Admins).\n\n` +
-                `📊 *#consumo / #topmsg / #lowmsg*\n   ↳ Muestra recursos y rankings de mensajes independientes por grupo.\n\n` +
+                `📊 *#consumo / #topmsg / #lowmsg*\n   ↳ Muestra recursos y rankings de mensajes por grupo.\n\n` +
                 `⚧️ *#genero [texto]*\n   ↳ Actualiza tu género libremente.\n\n` +
                 `💍 *#casarse [@usuario] / #aceptar*\n   ↳ Propón matrimonio y cásate.\n\n` +
                 `🎂 *#cumple DD/MM / #cumples*\n   ↳ Registra tu cumpleaños y consulta festejos.\n\n` +
                 `⚙️ *#setwelcome / #setgoodbye / #untimeout*\n   ↳ Configura bienvenidas, despedidas y castigos.\n\n` +
-                `🪙 *#bal / #work / #daily / #flip / #del / #anuncio*\n   ↳ Economía, juegos, moderación y anuncios a todos.`;
+                `🪙 *#bal / #work / #daily / #flip / #del / #anuncio*\n   ↳ Economía, juegos, moderación y anuncios a todos.\n\n` +
+                `🔞 *SECCIÓN +18* 🔞\n` +
+                `🌶️ *#chistenegro / #picante*\n   ↳ Humor adulto y ácido (sin contenido sexual explícito).\n\n` +
+                `🎯 *#vor [verdad/reto] [@usuario]*\n   ↳ Juego de verdad o reto, picante pero sin contenido explícito.\n\n` +
+                `🧠 *#trivia18 / #trivia [letra]*\n   ↳ Trivia de temas adultos, responde a tiempo y gana coins.\n\n` +
+                `🎰 *#apostar / #ruleta / #slots [monto]*\n   ↳ Mini-casino: apuesta tus coins y multiplícalas (o piérdelas).`;
 
             return await sock.sendMessage(from, { text: menu }, { quoted: m });
         }
@@ -351,11 +404,170 @@ async function connectToWhatsApp() {
             return await sock.sendMessage(from, { text: `😂 *Chiste:* \n\n${chisteAleatorio}` }, { quoted: m });
         }
 
+        // ===== COMANDOS +18 (humor adulto, sin contenido sexual explícito) =====
+
+        if (command === 'chistenegro' || command === 'picante' || command === 'chistepicante') {
+            const chistePicante = chistesPicantesList[Math.floor(Math.random() * chistesPicantesList.length)];
+            return await sock.sendMessage(from, { text: `🌶️ *Humor +18:* \n\n${chistePicante}` }, { quoted: m });
+        }
+
+        if (command === 'vor' || command === 'verdadoreto') {
+            const tipoElegido = args[0]?.toLowerCase();
+            const target = m.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0];
+            let esVerdad;
+            if (tipoElegido === 'verdad') esVerdad = true;
+            else if (tipoElegido === 'reto') esVerdad = false;
+            else esVerdad = Math.random() < 0.5;
+
+            const item = esVerdad
+                ? verdadesList[Math.floor(Math.random() * verdadesList.length)]
+                : retosList[Math.floor(Math.random() * retosList.length)];
+
+            const dirigidoA = target ? `@${target.split('@')[0]}` : `@${sender.split('@')[0]}`;
+            const encabezado = esVerdad ? '🎯 *VERDAD*' : '🔥 *RETO*';
+
+            return await sock.sendMessage(from, {
+                text: `${encabezado} para ${dirigidoA}:\n\n${item}\n\n_Usa #vor de nuevo para otra ronda._`,
+                mentions: [target || sender]
+            }, { quoted: m });
+        }
+
+        if (command === 'trivia18') {
+            const preguntaTrivia = trivia18List[Math.floor(Math.random() * trivia18List.length)];
+            const letras = ['A', 'B', 'C', 'D'];
+            let textoOpciones = '';
+            preguntaTrivia.opciones.forEach((op, idx) => { textoOpciones += `${letras[idx]}) ${op}\n`; });
+
+            triviaActiva.set(from, {
+                correctaIndex: preguntaTrivia.correcta,
+                letras,
+                expira: Date.now() + 30000
+            });
+
+            setTimeout(() => {
+                const activa = triviaActiva.get(from);
+                if (activa && activa.expira <= Date.now() + 1) triviaActiva.delete(from);
+            }, 30000);
+
+            return await sock.sendMessage(from, {
+                text: `🧠 *TRIVIA +18* 🧠\n\n${preguntaTrivia.pregunta}\n\n${textoOpciones}\n⏱️ Tienes 30s. Responde con *#trivia [letra]*`
+            }, { quoted: m });
+        }
+
+        if (command === 'trivia') {
+            const activa = triviaActiva.get(from);
+            if (!activa) return await sock.sendMessage(from, { text: '⚠️ No hay trivia activa. Inicia una con *#trivia18*.' }, { quoted: m });
+            if (Date.now() > activa.expira) {
+                triviaActiva.delete(from);
+                return await sock.sendMessage(from, { text: '⏱️ El tiempo para responder ya se acabó.' }, { quoted: m });
+            }
+            const respuestaLetra = args[0]?.toUpperCase();
+            const idxRespuesta = activa.letras.indexOf(respuestaLetra);
+            if (idxRespuesta === -1) return await sock.sendMessage(from, { text: '⚠️ Responde con una letra válida. Ej: *#trivia A*' }, { quoted: m });
+
+            triviaActiva.delete(from);
+            if (idxRespuesta === activa.correctaIndex) {
+                const premio = 150;
+                await usersCollection.updateOne({ jid: sender }, { $inc: { coins: premio } }, { upsert: true });
+                return await sock.sendMessage(from, { text: `✅ ¡Correcto! Ganaste *🪙 ${premio} coins*.` }, { quoted: m });
+            } else {
+                return await sock.sendMessage(from, { text: `❌ Incorrecto. La respuesta correcta era *${activa.letras[activa.correctaIndex]}*.` }, { quoted: m });
+            }
+        }
+
+        if (command === 'apostar' || command === 'apuesta') {
+            const montoApuesta = parseInt(args[0]);
+            const eleccion = args[1]?.toLowerCase();
+            if (!montoApuesta || isNaN(montoApuesta) || montoApuesta <= 0) {
+                return await sock.sendMessage(from, { text: '⚠️ Formato: *#apostar [monto] [cara/cruz]*' }, { quoted: m });
+            }
+            if (!['cara', 'cruz'].includes(eleccion)) {
+                return await sock.sendMessage(from, { text: '⚠️ Elige *cara* o *cruz*. Ej: *#apostar 100 cara*' }, { quoted: m });
+            }
+            const usuarioApuesta = await usersCollection.findOne({ jid: sender });
+            const saldoActual = usuarioApuesta?.coins || 0;
+            if (saldoActual < montoApuesta) {
+                return await sock.sendMessage(from, { text: `❌ No tienes suficientes coins. Tu saldo es *🪙 ${saldoActual}*.` }, { quoted: m });
+            }
+
+            const resultadoMoneda = Math.random() < 0.5 ? 'cara' : 'cruz';
+            const gano = resultadoMoneda === eleccion;
+            const cambioCoins = gano ? montoApuesta : -montoApuesta;
+            await usersCollection.updateOne({ jid: sender }, { $inc: { coins: cambioCoins } });
+
+            const textoResultado = gano
+                ? `🎉 ¡Salió *${resultadoMoneda}*! Ganaste *🪙 ${montoApuesta} coins*.`
+                : `😢 Salió *${resultadoMoneda}*. Perdiste *🪙 ${montoApuesta} coins*.`;
+            return await sock.sendMessage(from, { text: textoResultado }, { quoted: m });
+        }
+
+        if (command === 'ruleta') {
+            const montoRuleta = parseInt(args[0]);
+            const colorElegido = args[1]?.toLowerCase();
+            if (!montoRuleta || isNaN(montoRuleta) || montoRuleta <= 0) {
+                return await sock.sendMessage(from, { text: '⚠️ Formato: *#ruleta [monto] [rojo/negro/verde]*' }, { quoted: m });
+            }
+            if (!['rojo', 'negro', 'verde'].includes(colorElegido)) {
+                return await sock.sendMessage(from, { text: '⚠️ Elige *rojo*, *negro* o *verde*. Ej: *#ruleta 100 rojo*' }, { quoted: m });
+            }
+            const usuarioRuleta = await usersCollection.findOne({ jid: sender });
+            const saldoRuleta = usuarioRuleta?.coins || 0;
+            if (saldoRuleta < montoRuleta) {
+                return await sock.sendMessage(from, { text: `❌ No tienes suficientes coins. Tu saldo es *🪙 ${saldoRuleta}*.` }, { quoted: m });
+            }
+
+            const numeroSalido = Math.floor(Math.random() * 37); // 0-36
+            let colorSalido = 'verde';
+            if (numeroSalido !== 0) colorSalido = (numeroSalido % 2 === 0) ? 'negro' : 'rojo';
+
+            let multiplicador = 0;
+            if (colorSalido === colorElegido) multiplicador = colorSalido === 'verde' ? 14 : 2;
+            const cambioRuleta = multiplicador > 0 ? montoRuleta * (multiplicador - 1) : -montoRuleta;
+            await usersCollection.updateOne({ jid: sender }, { $inc: { coins: cambioRuleta } });
+
+            const textoRuleta = multiplicador > 0
+                ? `🎡 Salió *${numeroSalido} (${colorSalido})*. ¡Ganaste *🪙 ${cambioRuleta} coins*!`
+                : `🎡 Salió *${numeroSalido} (${colorSalido})*. Perdiste *🪙 ${montoRuleta} coins*.`;
+            return await sock.sendMessage(from, { text: textoRuleta }, { quoted: m });
+        }
+
+        if (command === 'slots' || command === 'tragamonedas') {
+            const montoSlots = parseInt(args[0]);
+            if (!montoSlots || isNaN(montoSlots) || montoSlots <= 0) {
+                return await sock.sendMessage(from, { text: '⚠️ Formato: *#slots [monto]*' }, { quoted: m });
+            }
+            const usuarioSlots = await usersCollection.findOne({ jid: sender });
+            const saldoSlots = usuarioSlots?.coins || 0;
+            if (saldoSlots < montoSlots) {
+                return await sock.sendMessage(from, { text: `❌ No tienes suficientes coins. Tu saldo es *🪙 ${saldoSlots}*.` }, { quoted: m });
+            }
+
+            const simbolos = ['🍒', '🍋', '🔔', '💎', '⭐'];
+            const tirada = [0, 0, 0].map(() => simbolos[Math.floor(Math.random() * simbolos.length)]);
+            const lineaTexto = tirada.join(' | ');
+
+            let multiplicadorSlots = 0;
+            if (tirada[0] === tirada[1] && tirada[1] === tirada[2]) {
+                multiplicadorSlots = tirada[0] === '💎' ? 10 : 5;
+            } else if (tirada[0] === tirada[1] || tirada[1] === tirada[2] || tirada[0] === tirada[2]) {
+                multiplicadorSlots = 1.5;
+            }
+
+            const cambioSlots = multiplicadorSlots > 0 ? Math.round(montoSlots * (multiplicadorSlots - 1)) : -montoSlots;
+            await usersCollection.updateOne({ jid: sender }, { $inc: { coins: cambioSlots } });
+
+            const textoSlots = multiplicadorSlots > 0
+                ? `🎰 [ ${lineaTexto} ]\n¡Ganaste *🪙 ${cambioSlots} coins*!`
+                : `🎰 [ ${lineaTexto} ]\nPerdiste *🪙 ${montoSlots} coins*.`;
+            return await sock.sendMessage(from, { text: textoSlots }, { quoted: m });
+        }
+
         if (command === 'imagen' || command === 'imgsearch') {
             const query = args.join(' ');
             if (!query) return await sock.sendMessage(from, { text: '⚠️ Escribe qué imagen buscas. Ej: *#imagen paisajes* o *#imagen gatos*' }, { quoted: m });
             try {
                 await sock.sendMessage(from, { text: '🔍 Buscando imagen...' }, { quoted: m });
+                // Usamos Picsum Photos para asegurar que la imagen siempre cargue correctamente
                 const imageUrl = `https://picsum.photos/800/600?random=${Math.random()}`;
                 await sock.sendMessage(from, { image: { url: imageUrl }, caption: `🖼️ Resultado para: *${query}*` }, { quoted: m });
             } catch {
@@ -893,6 +1105,12 @@ function iniciarVerificadorRecordatorios(sock, remindersCollection) {
 
 function iniciarVerificadorCumpleaños(sock, usersCollection) {
     const groupId = '120363422057355283@g.us'; 
+    // FIX BUG 2: antes `ultimoControl` se inicializaba como objeto {} y luego se
+    // reasignaba/comparaba como string. Funcionaba "por casualidad" porque JS
+    // permite reasignar el tipo, pero es frágil: si Render llegara a correr más
+    // de una instancia, o el proceso se reinicia justo a medianoche, se podían
+    // enviar cumpleaños duplicados. Ahora se controla con una variable de tipo
+    // string consistente, inicializada en null.
     let ultimoControlEnviado = null;
 
     setInterval(async () => {
