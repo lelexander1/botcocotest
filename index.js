@@ -1,13 +1,10 @@
 const { default: makeWASocket, DisconnectReason, downloadMediaMessage, initAuthCreds, BufferJSON } = require('@whiskeysockets/baileys');
-const { Sticker, StickerTypes } = require('wa-sticker-formatter');
 const pino = require('pino');
 const http = require('http');
 const { MongoClient } = require('mongodb');
 const sharp = require('sharp');
 const axios = require('axios');
-const ffmpeg = require('fluent-ffmpeg');
-const ffmpegInstaller = require('ffmpeg-static');
-ffmpeg.setFfmpegPath(ffmpegInstaller);
+const { Sticker, createSticker, StickerTypes } = require('wa-sticker-formatter');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -31,7 +28,6 @@ server.listen(PORT, () => {
 });
 
 const cooldowns = new Map();
-const commandFloodTracker = new Map(); // Control anti-flood para comandos de texto
 const stickerSpamTracker = new Map(); 
 const stickerTimeouts = new Map();     
 const propuestasMatrimonio = new Map(); 
@@ -84,31 +80,6 @@ async function useMongoDBAuthState(collection) {
         },
         saveCreds: () => writeData(creds, 'creds')
     };
-}
-
-// Conversión robusta de video a sticker animado
-async function convertirVideoAStickerAnimado(videoBuffer) {
-    const tempIn = path.join(os.tmpdir(), `in_${Date.now()}.mp4`);
-    const tempOut = path.join(os.tmpdir(), `out_${Date.now()}.webp`);
-    fs.writeFileSync(tempIn, videoBuffer);
-
-    return new Promise((resolve, reject) => {
-        ffmpeg(tempIn)
-            .fps(15).size('512x512')
-            .outputOptions(['-vcodec libwebp', '-lossless 0', '-q:v 50', '-loop 0', '-preset default', '-an', '-vsync 0', '-t 8'])
-            .toFormat('webp').save(tempOut)
-            .on('end', () => {
-                try {
-                    const buf = fs.readFileSync(tempOut);
-                    fs.unlinkSync(tempIn); fs.unlinkSync(tempOut);
-                    resolve(buf);
-                } catch (e) { reject(e); }
-            })
-            .on('error', (err) => {
-                try { if (fs.existsSync(tempIn)) fs.unlinkSync(tempIn); if (fs.existsSync(tempOut)) fs.unlinkSync(tempOut); } catch {}
-                reject(err);
-            });
-    });
 }
 
 // Obtener GIF animado aleatorio desde Giphy con respaldo
@@ -257,15 +228,6 @@ async function connectToWhatsApp() {
 
         let body = m.message.imageMessage?.caption || m.message.videoMessage?.caption || m.message.extendedTextMessage?.text || m.message.conversation || '';
         if (!body.startsWith('#')) return;
-
-        // --- PROTECCIÓN ANTI-FLOOD DE COMANDOS (EVITA SATURACIÓN Y BLOQUEOS) ---
-        const ahoraComando = Date.now();
-        const ultimoComandoUser = commandFloodTracker.get(sender) || 0;
-        if (ahoraComando - ultimoComandoUser < 800) {
-            // Si el usuario spamea comandos con menos de 0.8s de diferencia, se ignoran para no colapsar la cola
-            return;
-        }
-        commandFloodTracker.set(sender, ahoraComando);
 
         const args = body.slice(1).trim().split(/ +/);
         const command = args.shift().toLowerCase();
@@ -597,17 +559,22 @@ async function connectToWhatsApp() {
             try {
                 const targetMsg = q ? { message: q } : m;
                 const buf = await downloadMediaMessage(targetMsg, 'buffer', {}, { logger: pino({ level: 'silent' }) });
-                const sticker = await sharp(buf).resize(512, 512, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } }).webp({ quality: 80 }).toBuffer();
-                await sock.sendMessage(from, { sticker }, { quoted: m });
+                const sticker = new Sticker(buf, {
+                    pack: 'CocoBot Pack',
+                    author: 'Alencito',
+                    type: StickerTypes.DEFAULT,
+                    categories: ['🤩', '🎉'],
+                    quality: 80
+                });
+                const stickerBuffer = await sticker.toBuffer();
+                await sock.sendMessage(from, { sticker: stickerBuffer }, { quoted: m });
             } catch {
                 await sock.sendMessage(from, { text: '❌ No se pudo procesar la imagen.' }, { quoted: m });
             }
         }
 
         if (command === 'tovideo' || command === 'vidtosgif' || command === 'gif') {
-            const { Sticker, createSticker, StickerTypes } = require('wa-sticker-formatter');
             const q = m.message.extendedTextMessage?.contextInfo?.quotedMessage;
-            
             const isVideo = messageType === 'videoMessage' || q?.videoMessage;
             const isDocumentVideo = messageType === 'documentMessage' || q?.documentMessage;
 
@@ -616,7 +583,7 @@ async function connectToWhatsApp() {
             }
 
             try {
-                await sock.sendMessage(from, { text: '⏳ Procesando video con wa-sticker-formatter...' }, { quoted: m });
+                await sock.sendMessage(from, { text: '⏳ Procesando video a sticker...' }, { quoted: m });
                 const targetMsg = q ? { message: q } : m;
                 const buf = await downloadMediaMessage(targetMsg, 'buffer', {}, { logger: pino({ level: 'silent' }) });
 
@@ -624,20 +591,18 @@ async function connectToWhatsApp() {
                     return await sock.sendMessage(from, { text: '❌ El archivo pesa más de 8 MB.' }, { quoted: m });
                 }
 
-                // Configurar y generar el sticker animado con wa-sticker-formatter
                 const sticker = new Sticker(buf, {
-                    pack: 'CocoBot Pack', // Nombre del pack
-                    author: 'Alencito',   // Autor
-                    type: StickerTypes.ANIMATED, // Forzar sticker animado
-                    categories: ['🤩', '🎉'], // Emojis asociados
-                    quality: 50,          // Calidad de compresión (0 - 100)
-                    fps: 15               // Fotogramas por segundo
+                    pack: 'CocoBot Pack',
+                    author: 'Alencito',
+                    type: StickerTypes.ANIMATED,
+                    categories: ['🤩', '🎉'],
+                    quality: 50,
+                    fps: 15
                 });
 
                 const stickerBuffer = await sticker.toBuffer();
                 await sock.sendMessage(from, { sticker: stickerBuffer }, { quoted: m });
-            } catch (err) {
-                console.error('Error con wa-sticker-formatter:', err);
+            } catch {
                 await sock.sendMessage(from, { text: '❌ Error al procesar el video a sticker animado.' }, { quoted: m });
             }
         }
