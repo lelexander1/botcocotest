@@ -13,7 +13,7 @@ const { GoogleGenAI } = require('@google/genai');
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 const PORT = process.env.PORT || 3000;
 
-// Servidor HTTP optimizado con auto-ping interno para evitar suspensiones en Render
+// Servidor HTTP web para Render
 const server = http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
     res.end('CocoBot 24/7 activo y blindado contra caídas!\n');
@@ -21,9 +21,13 @@ const server = http.createServer((req, res) => {
 
 server.listen(PORT, () => {
     console.log(`🌐 Servidor HTTP corriendo en el puerto ${PORT}`);
-    setInterval(() => {
+    
+    // Auto-ping seguro usando axios para evitar el error de protocolo HTTPS en Render
+    setInterval(async () => {
         const appUrl = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
-        http.get(appUrl, () => {}).on('error', () => {});
+        try {
+            await axios.get(appUrl);
+        } catch {}
     }, 3 * 60 * 1000);
 });
 
@@ -694,7 +698,7 @@ function iniciarVerificadorRecordatorios(sock, remindersCollection) {
 
 function iniciarVerificadorCumpleaños(sock, usersCollection) {
     const groupId = '120363422057355283@g.us'; 
-    let ultimoControl = ''; 
+    let ultimoControl = {}; 
 
     setInterval(async () => {
         try {
