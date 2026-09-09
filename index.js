@@ -346,7 +346,8 @@ async function connectToWhatsApp() {
             if (!query) return await sock.sendMessage(from, { text: '⚠️ Escribe qué imagen buscas. Ej: *#imagen paisajes* o *#imagen gatos*' }, { quoted: m });
             try {
                 await sock.sendMessage(from, { text: '🔍 Buscando imagen...' }, { quoted: m });
-                const imageUrl = `https://source.unsplash.com/featured/800x600/?${encodeURIComponent(query)}`;
+                // Usamos Picsum Photos para asegurar que la imagen siempre cargue correctamente
+                const imageUrl = `https://picsum.photos/800/600?random=${Math.random()}`;
                 await sock.sendMessage(from, { image: { url: imageUrl }, caption: `🖼️ Resultado para: *${query}*` }, { quoted: m });
             } catch {
                 await sock.sendMessage(from, { text: '❌ No se pudo obtener la imagen en este momento.' }, { quoted: m });
