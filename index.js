@@ -646,23 +646,28 @@ async function connectToWhatsApp() {
             if (!info?.stanzaId) return await sock.sendMessage(from, { text: '⚠️ Responde al mensaje a eliminar.' }, { quoted: m });
             try { await sock.sendMessage(from, { delete: { remoteJid: from, id: info.stanzaId, participant: info.participant || sender } }); } catch { await sock.sendMessage(from, { text: '❌ Asegúrate de que el bot sea administrador.' }, { quoted: m }); }
         }
-
+        
         if (command === 'anuncio') {
             if (!sender.includes('275028952228088')) return;
             const text = args.join(' ');
             if (!text) return await sock.sendMessage(from, { text: '⚠️ Escribe el texto del anuncio.' }, { quoted: m });
             try {
                 let mentions = [];
-                let finalTxt = `📢 *ANUNCIO OFICIAL* 📢\n\n${text}\n\n`;
+                let finalTxt = `📢 *ANUNCIO OFICIAL* 📢\n\n${text}`; // Ya no añadimos los @ de forma visible abajo
+                
                 if (from.endsWith('@g.us')) {
                     const meta = await sock.groupMetadata(from);
-                    mentions = meta.participants.map(p => p.id);
-                    meta.participants.forEach(p => finalTxt += `@${p.id.split('@')[0]} `);
+                    mentions = meta.participants.map(p => p.id); // Extraemos todos los IDs
                 }
+
+                // Enviamos el mensaje limpio con las menciones ocultas en la API
                 await sock.sendMessage(from, { text: finalTxt, mentions });
+                
                 const sticker = await obtenerGifAleatorio('attention alert news announcement', 'https://media.giphy.com/media/xT9IgzoKnwFNmISR9I/giphy.gif');
                 if (sticker) await sock.sendMessage(from, { sticker });
-            } catch { await sock.sendMessage(from, { text: '❌ Error al enviar anuncio.' }, { quoted: m }); }
+            } catch { 
+                await sock.sendMessage(from, { text: '❌ Error al enviar anuncio.' }, { quoted: m }); 
+            }
         }
 
         if (command === 'bal') {
