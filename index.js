@@ -118,6 +118,11 @@ function calcularDiasFaltantes(fechaStr) {
     return Math.ceil((proximo - hoyPeru) / (1000 * 60 * 60 * 24));
 }
 
+// Helper: verificar si es el dueño/owner
+function esOwner(sender) {
+    return sender.includes('275028952228088');
+}
+
 async function connectToWhatsApp() {
     let client;
     try {
@@ -135,7 +140,12 @@ async function connectToWhatsApp() {
     const groupsCollection = db.collection('groups');
     const remindersCollection = db.collection('reminders');
     const bankCollection = db.collection('user_bank');
-    
+    const groupStatsCollection = db.collection('group_stats');
+
+    try {
+        await groupStatsCollection.createIndex({ jid: 1, groupId: 1 }, { unique: true });
+    } catch (e) { console.error('No se pudo crear índice en group_stats:', e); }
+
     console.log('📦 Conectado a MongoDB Atlas exitosamente');
 
     const { state, saveCreds } = await useMongoDBAuthState(sessionCollection);
@@ -193,12 +203,12 @@ async function connectToWhatsApp() {
         const sender = m.key.participant || from;
         const messageType = Object.keys(m.message)[0];
 
-        // --- CONTADOR DE MENSAJES POR GRUPO ---
+        // --- CONTADOR DE MENSAJES POR GRUPO (En colección independiente) ---
         if (from.endsWith('@g.us')) {
             try {
-                await usersCollection.updateOne(
+                await groupStatsCollection.updateOne(
                     { jid: sender, groupId: from }, 
-                    { $inc: { messageCount: 1 }, $setOnInsert: { coins: 0 } }, 
+                    { $inc: { messageCount: 1 } }, 
                     { upsert: true }
                 );
             } catch {}
@@ -264,7 +274,7 @@ async function connectToWhatsApp() {
                 `🙃 *#si*\n   ↳ Envía la palabra a la IA para recibir una respuesta ingeniosa contraria.\n\n` +
                 `🪙 *#crypto [moneda]*\n   ↳ Consulta precios y variación de criptomonedas en tiempo real.\n\n` +
                 `😂 *#chistes*\n   ↳ Envía un chiste corto de manera aleatoria.\n\n` +
-                `🖼️ *#imagen [tema]*\n   ↳ Busca y envía una foto aleatoria de alta calidad.\n\n` +
+                `🖼️ *#imagen [tema]*\n   ↳ Busca y envía una foto aleatoria.\n\n` +
                 `📦 *#still [texto / ver / borrar]*\n   ↳ Tu banco personal de notas o frases guardadas.\n\n` +
                 `👤 *#edad [núm], #frase [txt], #setsticker*\n   ↳ Configura tu edad, frase personal y sticker de perfil.\n\n` +
                 `🔗 *#facebook, #instagram, #discord, #spotify, #x [link]*\n   ↳ Añade tus redes sociales a tu tarjeta de perfil.\n\n` +
@@ -274,7 +284,7 @@ async function connectToWhatsApp() {
                 `📋 *#misrecordatorios / #borrarrec [id]*\n   ↳ Administra tus recordatorios pendientes.\n\n` +
                 `🎨 *#s / #gif / #toimg*\n   ↳ Crea stickers limpios, videos animados o pasa stickers a foto.\n\n` +
                 `🥷 *#kill [@usuario]*\n   ↳ Expulsa a un usuario con un GIF (Solo Admins).\n\n` +
-                `📊 *#consumo / #topmsg / #lowmsg*\n   ↳ Muestra recursos y rankings de mensajes por grupo.\n\n` +
+                `📊 *#consumo / #topmsg / #lowmsg*\n   ↳ Muestra recursos y rankings de mensajes independientes por grupo.\n\n` +
                 `⚧️ *#genero [texto]*\n   ↳ Actualiza tu género libremente.\n\n` +
                 `💍 *#casarse [@usuario] / #aceptar*\n   ↳ Propón matrimonio y cásate.\n\n` +
                 `🎂 *#cumple DD/MM / #cumples*\n   ↳ Registra tu cumpleaños y consulta festejos.\n\n` +
@@ -346,7 +356,6 @@ async function connectToWhatsApp() {
             if (!query) return await sock.sendMessage(from, { text: '⚠️ Escribe qué imagen buscas. Ej: *#imagen paisajes* o *#imagen gatos*' }, { quoted: m });
             try {
                 await sock.sendMessage(from, { text: '🔍 Buscando imagen...' }, { quoted: m });
-                // Usamos Picsum Photos para asegurar que la imagen siempre cargue correctamente
                 const imageUrl = `https://picsum.photos/800/600?random=${Math.random()}`;
                 await sock.sendMessage(from, { image: { url: imageUrl }, caption: `🖼️ Resultado para: *${query}*` }, { quoted: m });
             } catch {
@@ -432,6 +441,7 @@ async function connectToWhatsApp() {
         if (command === 'perfil' || command === 'verperfil') {
             const target = m.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0] || m.message.extendedTextMessage?.contextInfo?.participant || sender;
             const userData = await usersCollection.findOne({ jid: target }) || {};
+            const statsData = from.endsWith('@g.us') ? (await groupStatsCollection.findOne({ jid: target, groupId: from }) || {}) : {};
             
             let nombrePareja = 'Soltero/a 💔';
             if (userData.pareja) {
@@ -456,7 +466,7 @@ async function connectToWhatsApp() {
                 `💍 *Estado Civil:* ${nombrePareja}\n` +
                 `🎂 *Cumpleaños:* ${userData.cumple ? userData.cumple : 'No registrado'}\n` +
                 `🪙 *Coins:* ${userData.coins || 0}\n` +
-                `📊 *Mensajes:* ${userData.messageCount || 0}\n` +
+                `📊 *Mensajes (este grupo):* ${statsData.messageCount || 0}\n` +
                 (redesTxt ? `\n🌐 *REDES SOCIALES:*\n${redesTxt}` : '');
 
             await sock.sendMessage(from, { text: perfilTxt, mentions: [target, userData.pareja].filter(Boolean) }, { quoted: m });
@@ -552,7 +562,7 @@ async function connectToWhatsApp() {
                 const admins = meta.participants.filter(p => p.admin !== null).map(p => p.id);
                 const botNumber = sock.user.id.includes(':') ? sock.user.id.split(':')[0] + '@s.whatsapp.net' : sock.user.id;
                 
-                const isSenderAdmin = admins.includes(sender) || sender.includes('275028952228088');
+                const isSenderAdmin = admins.includes(sender) || esOwner(sender);
                 const isBotAdmin = admins.includes(botNumber);
 
                 if (!isSenderAdmin) return await sock.sendMessage(from, { text: '⚠️ Solo los administradores pueden usar este comando.' }, { quoted: m });
@@ -571,7 +581,7 @@ async function connectToWhatsApp() {
         }
 
         if (command === 'consumo' || command === 'stats' || command === 'recursos') {
-            if (!sender.includes('275028952228088')) {
+            if (!esOwner(sender)) {
                 if (from.endsWith('@g.us')) {
                     const meta = await sock.groupMetadata(from);
                     const admins = meta.participants.filter(p => p.admin !== null).map(p => p.id);
@@ -613,7 +623,7 @@ async function connectToWhatsApp() {
         if (command === 'topmsg' || command === 'masactivos') {
             if (!from.endsWith('@g.us')) return await sock.sendMessage(from, { text: '⚠️ Este comando solo se puede usar en grupos.' }, { quoted: m });
 
-            const topUsers = await usersCollection.find({ groupId: from, messageCount: { $exists: true } }).sort({ messageCount: -1 }).limit(5).toArray();
+            const topUsers = await groupStatsCollection.find({ groupId: from, messageCount: { $exists: true } }).sort({ messageCount: -1 }).limit(5).toArray();
             if (topUsers.length === 0) return await sock.sendMessage(from, { text: '📊 Aún no hay registros de mensajes en este grupo.' }, { quoted: m });
 
             let txt = '🏆 *TOP 5 - USUARIOS QUE MÁS ESCRIBEN (EN ESTE GRUPO)* 🏆\n\n';
@@ -626,7 +636,7 @@ async function connectToWhatsApp() {
         if (command === 'lowmsg' || command === 'menosactivos') {
             if (!from.endsWith('@g.us')) return await sock.sendMessage(from, { text: '⚠️ Este comando solo se puede usar en grupos.' }, { quoted: m });
 
-            const lowUsers = await usersCollection.find({ groupId: from, messageCount: { $exists: true } }).sort({ messageCount: 1 }).limit(5).toArray();
+            const lowUsers = await groupStatsCollection.find({ groupId: from, messageCount: { $exists: true } }).sort({ messageCount: 1 }).limit(5).toArray();
             if (lowUsers.length === 0) return await sock.sendMessage(from, { text: '📊 Aún no hay registros de mensajes en este grupo.' }, { quoted: m });
 
             let txt = '💤 *TOP 5 - USUARIOS QUE MENOS ESCRIBEN (EN ESTE GRUPO)* 💤\n\n';
@@ -683,7 +693,7 @@ async function connectToWhatsApp() {
             let txt = '🎂 *PRÓXIMOS CUMPLEAÑOS* 🎂\n\n';
             all.forEach((u, i) => {
                 const d = calcularDiasFaltantes(u.cumple);
-                txt += `${i + 1}. @${u.jid.split('@')[0]} ➡️ *${u.cumple}* ${d === 0 ? '🎉 *¡Es hoy!*' : `(Faltan ${d} days)`}\n`;
+                txt += `${i + 1}. @${u.jid.split('@')[0]} ➡️ *${u.cumple}* ${d === 0 ? '🎉 *¡Es hoy!*' : `(Faltan ${d} días)`}\n`;
             });
             await sock.sendMessage(from, { text: txt, mentions: all.map(u => u.jid) }, { quoted: m });
         }
@@ -696,7 +706,7 @@ async function connectToWhatsApp() {
             if (!from.endsWith('@g.us')) return await sock.sendMessage(from, { text: '⚠️ Solo en grupos.' }, { quoted: m });
             const meta = await sock.groupMetadata(from);
             const admins = meta.participants.filter(p => p.admin !== null).map(p => p.id);
-            if (!admins.includes(sender) && !sender.includes('275028952228088')) return await sock.sendMessage(from, { text: '⚠️ Solo administradores.' }, { quoted: m });
+            if (!admins.includes(sender) && !esOwner(sender)) return await sock.sendMessage(from, { text: '⚠️ Solo administradores.' }, { quoted: m });
             const text = args.join(' ');
             if (!text) return await sock.sendMessage(from, { text: '⚠️ Escribe el mensaje.' }, { quoted: m });
             await groupsCollection.updateOne({ groupId: from }, { $set: { [command === 'setwelcome' ? 'welcome' : 'goodbye']: text } }, { upsert: true });
@@ -707,7 +717,7 @@ async function connectToWhatsApp() {
             if (!from.endsWith('@g.us')) return await sock.sendMessage(from, { text: '⚠️ Solo en grupos.' }, { quoted: m });
             const meta = await sock.groupMetadata(from);
             const admins = meta.participants.filter(p => p.admin !== null).map(p => p.id);
-            if (!admins.includes(sender) && !sender.includes('275028952228088')) return await sock.sendMessage(from, { text: '⚠️ Solo administradores.' }, { quoted: m });
+            if (!admins.includes(sender) && !esOwner(sender)) return await sock.sendMessage(from, { text: '⚠️ Solo administradores.' }, { quoted: m });
             const target = m.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0];
             if (!target) return await sock.sendMessage(from, { text: '⚠️ Menciona al usuario. Ej: *#untimeout @usuario*.' }, { quoted: m });
             if (stickerTimeouts.has(target)) {
@@ -801,7 +811,7 @@ async function connectToWhatsApp() {
         }
 
         if (command === 'anuncio') {
-            if (!sender.includes('275028952228088')) return;
+            if (!esOwner(sender)) return;
             const text = args.join(' ');
             if (!text) return await sock.sendMessage(from, { text: '⚠️ Escribe el texto del anuncio.' }, { quoted: m });
             try {
@@ -819,7 +829,7 @@ async function connectToWhatsApp() {
 
         if (command === 'bal') {
             const u = await usersCollection.findOne({ jid: sender });
-            return await sock.sendMessage(from, { text: `🪙 Tienes *${u ? u.coins : 0} coins*.` }, { quoted: m });
+            return await sock.sendMessage(from, { text: `🪙 Tienes *${u ? (u.coins || 0) : 0} coins*.` }, { quoted: m });
         }
 
         if (command === 'work' || command === 'w') {
@@ -883,7 +893,7 @@ function iniciarVerificadorRecordatorios(sock, remindersCollection) {
 
 function iniciarVerificadorCumpleaños(sock, usersCollection) {
     const groupId = '120363422057355283@g.us'; 
-    let ultimoControl = {}; 
+    let ultimoControlEnviado = null;
 
     setInterval(async () => {
         try {
@@ -901,8 +911,8 @@ function iniciarVerificadorCumpleaños(sock, usersCollection) {
             const hoy = `${d}/${m}`;
             const controlKey = `${hoy}-${h}:${min}`;
 
-            if (h === '00' && min === '00' && ultimoControl !== controlKey) {
-                ultimoControl = controlKey;
+            if (h === '00' && min === '00' && ultimoControlEnviado !== controlKey) {
+                ultimoControlEnviado = controlKey;
                 const cumpleañeros = await usersCollection.find({ cumple: hoy }).toArray();
                 for (let user of cumpleañeros) {
                     await sock.sendMessage(groupId, { 
