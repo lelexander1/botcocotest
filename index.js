@@ -204,43 +204,6 @@ async function connectToWhatsApp() {
             } catch {}
         }
 
-        // --- COMANDO DE CRIPTOMONEDAS (#CRYPTO [moneda]) ---
-        if (command === 'crypto' || command === 'precio' || command === 'cripto') {
-            const moneda = args[0]?.toLowerCase() || 'bitcoin';
-            try {
-                await sock.sendMessage(from, { text: `🔍 Consultando precio de *${moneda}*...` }, { quoted: m });
-                
-                // Configurando la petición con la API Key de CoinGecko si existe
-                const headers = process.env.COINGECKO_API_KEY ? { 'x-cg-demo-api-key': process.env.COINGECKO_API_KEY } : {};
-                
-                const url = `https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(moneda)}&vs_currencies=usd,eur&include_24hr_change=true`;
-                const response = await axios.get(url, { headers });
-                const data = response.data;
-
-                if (!data[moneda]) {
-                    return await sock.sendMessage(from, { text: `❌ No se encontró información para "${moneda}". Prueba con: *#crypto bitcoin*, *#crypto ethereum*, *#crypto solana*...` }, { quoted: m });
-                }
-
-                const precioUsd = data[moneda].usd;
-                const precioEur = data[moneda].eur;
-                const cambio24h = data[moneda].usd_24h_change?.toFixed(2) || 0;
-                const iconoCambio = cambio24h >= 0 ? '📈 🟢' : '📉 🔴';
-
-                const textoCrypto = `🪙 *PRECIO DE MERCADO: ${moneda.toUpperCase()}* 🪙\n` +
-                    `────────────────────────\n` +
-                    `💵 *USD:* $${precioUsd.toLocaleString()}\n` +
-                    `💶 *EUR:* €${precioEur.toLocaleString()}\n` +
-                    `${iconoCambio} *Cambio 24h:* ${cambio24h}%\n` +
-                    `────────────────────────\n` +
-                    `🌐 *Fuente:* CoinGecko API`;
-
-                return await sock.sendMessage(from, { text: textoCrypto }, { quoted: m });
-            } catch (err) {
-                return await sock.sendMessage(from, { text: '❌ Error al consultar la API de CoinGecko.' }, { quoted: m });
-            }
-        }
-
-
         // --- SISTEMA ANTISPAM DE STICKERS ---
         if (from.endsWith('@g.us') && messageType === 'stickerMessage') {
             const ahora = Date.now();
@@ -298,7 +261,8 @@ async function connectToWhatsApp() {
                 `────────────────────────\n\n` +
                 `📌 *COMANDOS Y FUNCIONES:* \n\n` +
                 `🤖 *#ia [texto]*\n   ↳ Consulta preguntas a la Inteligencia Artificial.\n\n` +
-                `🙃 *#si*\n   ↳ Envía la palabra a la IA para recibir una respuesta ingeniosa contraria (ej: un rotundo "No").\n\n` +
+                `🙃 *#si*\n   ↳ Envía la palabra a la IA para recibir una respuesta ingeniosa contraria.\n\n` +
+                `🪙 *#crypto [moneda]*\n   ↳ Consulta precios y variación de criptomonedas en tiempo real.\n\n` +
                 `😂 *#chistes*\n   ↳ Envía un chiste corto de manera aleatoria.\n\n` +
                 `🖼️ *#imagen [tema]*\n   ↳ Busca y envía una foto aleatoria de alta calidad.\n\n` +
                 `📦 *#still [texto / ver / borrar]*\n   ↳ Tu banco personal de notas o frases guardadas.\n\n` +
@@ -306,17 +270,16 @@ async function connectToWhatsApp() {
                 `🔗 *#facebook, #instagram, #discord, #spotify, #x [link]*\n   ↳ Añade tus redes sociales a tu tarjeta de perfil.\n\n` +
                 `👁️ *#perfil [@usuario]*\n   ↳ Muestra tu tarjeta de perfil con redes sociales y sticker ID.\n\n` +
                 `⏰ *#recordatorio o #rec [tiempo/fecha] [mensaje]*\n   ↳ Programa un recordatorio privado o fecha exacta.\n\n` +
-                `📢 *#recordatorio-grupo o #recg [tiempo/fecha] [mensaje]*\n   ↳ Programa un recordatorio que sonará para todo el grupo.\n\n` +
+                `📢 *#recordatorio-grupo o #recg [tiempo/fecha] [mensaje]*\n   ↳ Programa un recordatorio grupal.\n\n` +
                 `📋 *#misrecordatorios / #borrarrec [id]*\n   ↳ Administra tus recordatorios pendientes.\n\n` +
-                `🎨 *#s / #gif / #toimg*\n   ↳ Crea stickers limpios (sin estirar ni marcas), videos animados o pasa stickers a foto.\n\n` +
+                `🎨 *#s / #gif / #toimg*\n   ↳ Crea stickers limpios, videos animados o pasa stickers a foto.\n\n` +
                 `🥷 *#kill [@usuario]*\n   ↳ Expulsa a un usuario con un GIF (Solo Admins).\n\n` +
-                `📊 *#consumo / #topmsg (por grupo) / #lowmsg (por grupo)*\n   ↳ Muestra recursos y el ranking de mensajes independiente por cada grupo.\n\n` +
+                `📊 *#consumo / #topmsg / #lowmsg*\n   ↳ Muestra recursos y rankings de mensajes por grupo.\n\n` +
                 `⚧️ *#genero [texto]*\n   ↳ Actualiza tu género libremente.\n\n` +
                 `💍 *#casarse [@usuario] / #aceptar*\n   ↳ Propón matrimonio y cásate.\n\n` +
                 `🎂 *#cumple DD/MM / #cumples*\n   ↳ Registra tu cumpleaños y consulta festejos.\n\n` +
-                `⚙️ *#setwelcome / #setgoodbye / #untimeout*\n   ↳ Configura bienvenidas, despedidas y quita castigos.\n\n` +
-                `🪙 *#crypto [bitcoin/ethereum/etc.]*\n   ↳ Consulta precios y variación de criptomonedas en tiempo real.\n\n` +
-                `🪙 *#bal / #work / #daily / #flip / #del / #anuncio*\n   ↳ Economía, juegos, moderación y anuncios a todos (ocultos).`;
+                `⚙️ *#setwelcome / #setgoodbye / #untimeout*\n   ↳ Configura bienvenidas, despedidas y castigos.\n\n` +
+                `🪙 *#bal / #work / #daily / #flip / #del / #anuncio*\n   ↳ Economía, juegos, moderación y anuncios a todos.`;
 
             return await sock.sendMessage(from, { text: menu }, { quoted: m });
         }
@@ -328,6 +291,40 @@ async function connectToWhatsApp() {
                 return await sock.sendMessage(from, { text: `${res.text || '¡No!'}` }, { quoted: m });
             } catch {
                 return await sock.sendMessage(from, { text: '❌ ¡No!' }, { quoted: m });
+            }
+        }
+
+        // --- COMANDO DE CRIPTOMONEDAS (#CRYPTO [moneda]) ---
+        if (command === 'crypto' || command === 'precio' || command === 'cripto') {
+            const moneda = args[0]?.toLowerCase() || 'bitcoin';
+            try {
+                await sock.sendMessage(from, { text: `🔍 Consultando precio de *${moneda}*...` }, { quoted: m });
+                
+                const headers = process.env.COINGECKO_API_KEY ? { 'x-cg-demo-api-key': process.env.COINGECKO_API_KEY } : {};
+                const url = `https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(moneda)}&vs_currencies=usd,eur&include_24hr_change=true`;
+                const response = await axios.get(url, { headers });
+                const data = response.data;
+
+                if (!data[moneda]) {
+                    return await sock.sendMessage(from, { text: `❌ No se encontró información para "${moneda}". Prueba con: *#crypto bitcoin*, *#crypto ethereum*...` }, { quoted: m });
+                }
+
+                const precioUsd = data[moneda].usd;
+                const precioEur = data[moneda].eur;
+                const cambio24h = data[moneda].usd_24h_change?.toFixed(2) || 0;
+                const iconoCambio = cambio24h >= 0 ? '📈 🟢' : '📉 🔴';
+
+                const textoCrypto = `🪙 *PRECIO DE MERCADO: ${moneda.toUpperCase()}* 🪙\n` +
+                    `────────────────────────\n` +
+                    `💵 *USD:* $${precioUsd.toLocaleString()}\n` +
+                    `💶 *EUR:* €${precioEur.toLocaleString()}\n` +
+                    `${iconoCambio} *Cambio 24h:* ${cambio24h}%\n` +
+                    `────────────────────────\n` +
+                    `🌐 *Fuente:* CoinGecko API`;
+
+                return await sock.sendMessage(from, { text: textoCrypto }, { quoted: m });
+            } catch (err) {
+                return await sock.sendMessage(from, { text: '❌ Error al consultar la API de CoinGecko.' }, { quoted: m });
             }
         }
 
@@ -583,7 +580,6 @@ async function connectToWhatsApp() {
                 }
             }
 
-            // Memoria real consumida exclusivamente por el proceso de Node.js (Bot)
             const memUsadaByBot = process.memoryUsage().rss / (1024 * 1024);
             const formatoMB = (mb) => mb.toFixed(2) + ' MB';
 
@@ -601,7 +597,7 @@ async function connectToWhatsApp() {
                 `────────────────────────\n` +
                 `🖥️ *Hosting:* Render (Cloud Free Tier)\n` +
                 `🧠 *RAM Usada (Bot Node.js):* ${formatoMB(memUsadaByBot)}\n` +
-                `⚡ *CPU Cores (Sistema):* ${os.cpus().length} Núcleos\n` +
+                `⚡ *CPU Cores:* ${os.cpus().length} Núcleos\n` +
                 `🗄️ *Base de Datos (MongoDB Atlas):*\n` +
                 `   • Estado: ${mongoStatus}\n` +
                 `   • Latencia API: ${mongoLatencyMs} ms\n` +
@@ -613,7 +609,6 @@ async function connectToWhatsApp() {
             return await sock.sendMessage(from, { text: statsText }, { quoted: m });
         }
 
-        // --- COMANDO TOP DE MENSAJES POR GRUPO (#TOPMSG) ---
         if (command === 'topmsg' || command === 'masactivos') {
             if (!from.endsWith('@g.us')) return await sock.sendMessage(from, { text: '⚠️ Este comando solo se puede usar en grupos.' }, { quoted: m });
 
@@ -627,7 +622,6 @@ async function connectToWhatsApp() {
             return await sock.sendMessage(from, { text: txt, mentions: topUsers.map(u => u.jid) }, { quoted: m });
         }
 
-        // --- COMANDO MENOS ACTIVOS POR GRUPO (#LOWMSG) ---
         if (command === 'lowmsg' || command === 'menosactivos') {
             if (!from.endsWith('@g.us')) return await sock.sendMessage(from, { text: '⚠️ Este comando solo se puede usar en grupos.' }, { quoted: m });
 
@@ -688,7 +682,7 @@ async function connectToWhatsApp() {
             let txt = '🎂 *PRÓXIMOS CUMPLEAÑOS* 🎂\n\n';
             all.forEach((u, i) => {
                 const d = calcularDiasFaltantes(u.cumple);
-                txt += `${i + 1}. @${u.jid.split('@')[0]} ➡️ *${u.cumple}* ${d === 0 ? '🎉 *¡Es hoy!*' : `(Faltan ${d} días)`}\n`;
+                txt += `${i + 1}. @${u.jid.split('@')[0]} ➡️ *${u.cumple}* ${d === 0 ? '🎉 *¡Es hoy!*' : `(Faltan ${d} days)`}\n`;
             });
             await sock.sendMessage(from, { text: txt, mentions: all.map(u => u.jid) }, { quoted: m });
         }
