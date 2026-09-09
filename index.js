@@ -261,18 +261,19 @@ async function connectToWhatsApp() {
                 `😂 *#chistes*\n   ↳ Envía un chiste corto de manera aleatoria.\n\n` +
                 `🖼️ *#imagen [tema]*\n   ↳ Busca y envía una foto aleatoria de alta calidad.\n\n` +
                 `📦 *#still [texto / ver / borrar]*\n   ↳ Tu banco personal de notas o frases guardadas.\n\n` +
-                `👤 *#edad [nú), #frase [txt], #setsticker*\n   ↳ Configura tu edad, frase personal y sticker de perfil.\n\n` +
-                `👁️ *#perfil [@usuario]*\n   ↳ Muestra tu tarjeta de perfil completa y tu sticker ID.\n\n` +
-                `⏰ *#recordatorio [tiempo] [mensaje]*\n   ↳ Programa un recordatorio que te llegará por mensaje privado.\n\n` +
+                `👤 *#edad [núm], #frase [txt], #setsticker*\n   ↳ Configura tu edad, frase personal y sticker de perfil.\n\n` +
+                `🔗 *#facebook, #instagram, #discord, #spotify, #x [link]*\n   ↳ Añade enlaces hipervinculados de tus redes a tu perfil.\n\n` +
+                `👁️ *#perfil [@usuario]*\n   ↳ Muestra tu tarjeta de perfil con redes sociales y sticker ID.\n\n` +
+                `⏰ *#recordatorio [tiempo] [mensaje]*\n   ↳ Programa un recordatorio privado.\n\n` +
                 `📋 *#misrecordatorios / #borrarrec [id]*\n   ↳ Administra tus recordatorios pendientes.\n\n` +
                 `🎨 *#s / #gif / #toimg*\n   ↳ Crea stickers de imágenes, videos animados o pasa stickers a foto.\n\n` +
-                `🥷 *#kill [@usuario]*\n   ↳ Expulsa a un usuario de un grupo con un GIF (Solo Admins).\n\n` +
-                `📊 *#consumo / #topmsg / #lowmsg*\n   ↳ Muestra recursos del servidor y el ranking de mensajes en el chat.\n\n` +
-                `⚧️ *#genero [hombre/mujer/cosa]*\n   ↳ Actualiza tu género en el bot.\n\n` +
-                `💍 *#casarse [@usuario] / #aceptar*\n   ↳ Propón matrimonio y cásate con otro usuario.\n\n` +
-                `🎂 *#cumple DD/MM / #cumples*\n   ↳ Registra tu cumpleaños y consulta los próximos festejos.\n\n` +
-                `⚙️ *#setwelcome / #setgoodbye / #untimeout*\n   ↳ Configura mensajes de bienvenida/despedida y quita castigos.\n\n` +
-                `🪙 *#bal / #work / #daily / #flip / #del / #anuncio*\n   ↳ Comandos de economía, minijuegos, monedas y moderación extra.`;
+                `🥷 *#kill [@usuario]*\n   ↳ Expulsa a un usuario con un GIF (Solo Admins).\n\n` +
+                `📊 *#consumo / #topmsg / #lowmsg*\n   ↳ Muestra recursos del servidor y ranking de mensajes.\n\n` +
+                `⚧️ *#genero [texto]*\n   ↳ Actualiza tu género libremente.\n\n` +
+                `💍 *#casarse [@usuario] / #aceptar*\n   ↳ Propón matrimonio y cásate.\n\n` +
+                `🎂 *#cumple DD/MM / #cumples*\n   ↳ Registra tu cumpleaños y consulta festejos.\n\n` +
+                `⚙️ *#setwelcome / #setgoodbye / #untimeout*\n   ↳ Configura bienvenidas, despedidas y quita castigos.\n\n` +
+                `🪙 *#bal / #work / #daily / #flip / #del / #anuncio*\n   ↳ Economía, juegos, moderación y anuncios a todos (ocultos).`;
 
             return await sock.sendMessage(from, { text: menu }, { quoted: m });
         }
@@ -352,6 +353,16 @@ async function connectToWhatsApp() {
             return await sock.sendMessage(from, { text: `✅ Frase de perfil actualizada correctamente.` }, { quoted: m });
         }
 
+        // --- COMANDOS DE REDES SOCIALES PARA EL PERFIL ---
+        if (['facebook', 'instagram', 'discord', 'spotify', 'x'].includes(command)) {
+            const redLink = args.join(' ');
+            if (!redLink) return await sock.sendMessage(from, { text: `⚠️ Escribe tu enlace o usuario de ${command}. Ej: *#${command} [enlace o usuario]*` }, { quoted: m });
+            
+            let campoRed = `redes.${command}`;
+            await usersCollection.updateOne({ jid: sender }, { $set: { [campoRed]: redLink } }, { upsert: true });
+            return await sock.sendMessage(from, { text: `✅ Enlace de *${command.toUpperCase()}* guardado en tu perfil con éxito.` }, { quoted: m });
+        }
+
         if (command === 'setsticker' || command === 'identidad') {
             const q = m.message.extendedTextMessage?.contextInfo?.quotedMessage;
             if (messageType !== 'stickerMessage' && !q?.stickerMessage) {
@@ -377,16 +388,25 @@ async function connectToWhatsApp() {
                 nombrePareja = `@${userData.pareja.split('@')[0]} 💍`;
             }
 
+            const redes = userData.redes || {};
+            let redesTxt = '';
+            if (redes.facebook) redesTxt += `📘 *Facebook:* ${redes.facebook.startsWith('http') ? redes.facebook : 'https://facebook.com/' + redes.facebook}\n`;
+            if (redes.instagram) redesTxt += `📸 *Instagram:* ${redes.instagram.startsWith('http') ? redes.instagram : 'https://instagram.com/' + redes.instagram}\n`;
+            if (redes.discord) redesTxt += `🎮 *Discord:* ${redes.discord}\n`;
+            if (redes.spotify) redesTxt += `🎧 *Spotify:* ${redes.spotify}\n`;
+            if (redes.x) redesTxt += `✖️ *X (Twitter):* ${redes.x.startsWith('http') ? redes.x : 'https://x.com/' + redes.x}\n`;
+
             const perfilTxt = `👤 *PERFIL DE USUARIO* 👤\n` +
                 `────────────────────────\n` +
                 `📌 *Usuario:* @${target.split('@')[0]}\n` +
-                `🎂 *Edad:* ${userData.edad ? userData.edad + ' años' : 'No especificada (Usa #edad)'}\n` +
-                `⚧️ *Género:* ${userData.genero ? userData.genero : 'No especificado (Usa #genero)'}\n` +
-                `💬 *Frase:* "${userData.frase ? userData.frase : 'Sin frase (Usa #frase)'}"\n` +
+                `🎂 *Edad:* ${userData.edad ? userData.edad + ' años' : 'No especificada'}\n` +
+                `⚧️ *Género:* ${userData.genero ? userData.genero : 'No especificado'}\n` +
+                `💬 *Frase:* "${userData.frase ? userData.frase : 'Sin frase'}"\n` +
                 `💍 *Estado Civil:* ${nombrePareja}\n` +
-                `🎂 *Cumpleaños:* ${userData.cumple ? userData.cumple : 'No registrado (Usa #cumple)'}\n` +
+                `🎂 *Cumpleaños:* ${userData.cumple ? userData.cumple : 'No registrado'}\n` +
                 `🪙 *Coins:* ${userData.coins || 0}\n` +
-                `📊 *Mensajes escritos:* ${userData.messageCount || 0}\n`;
+                `📊 *Mensajes:* ${userData.messageCount || 0}\n` +
+                (redesTxt ? `\n🌐 *REDES SOCIALES:*\n${redesTxt}` : '');
 
             await sock.sendMessage(from, { text: perfilTxt, mentions: [target, userData.pareja].filter(Boolean) }, { quoted: m });
 
@@ -489,14 +509,10 @@ async function connectToWhatsApp() {
 
         if (command === 'genero') {
             const generoTexto = args.join(' ');
-            if (!generoTexto) {
-                return await sock.sendMessage(from, { text: '⚠️ Escribe el género que deseas configurar. Ej: *#genero masculino*, *#genero femenino* o *#genero trans*' }, { quoted: m });
-            }
-            
+            if (!generoTexto) return await sock.sendMessage(from, { text: '⚠️ Escribe tu género. Ej: *#genero masculino*, *#genero no binario*...' }, { quoted: m });
             await usersCollection.updateOne({ jid: sender }, { $set: { genero: generoTexto } }, { upsert: true });
             return await sock.sendMessage(from, { text: `✅ Género actualizado a: *${generoTexto}*.` }, { quoted: m });
         }
-
 
         if (command === 'casarse' || command === 'matrimonio') {
             const target = m.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0];
@@ -646,28 +662,23 @@ async function connectToWhatsApp() {
             if (!info?.stanzaId) return await sock.sendMessage(from, { text: '⚠️ Responde al mensaje a eliminar.' }, { quoted: m });
             try { await sock.sendMessage(from, { delete: { remoteJid: from, id: info.stanzaId, participant: info.participant || sender } }); } catch { await sock.sendMessage(from, { text: '❌ Asegúrate de que el bot sea administrador.' }, { quoted: m }); }
         }
-        
+
+        // --- COMANDO ANUNCIO CON MENCIONES OCULTAS ---
         if (command === 'anuncio') {
             if (!sender.includes('275028952228088')) return;
             const text = args.join(' ');
             if (!text) return await sock.sendMessage(from, { text: '⚠️ Escribe el texto del anuncio.' }, { quoted: m });
             try {
                 let mentions = [];
-                let finalTxt = `📢 *ANUNCIO OFICIAL* 📢\n\n${text}`; // Ya no añadimos los @ de forma visible abajo
-                
+                let finalTxt = `📢 *ANUNCIO OFICIAL* 📢\n\n${text}`;
                 if (from.endsWith('@g.us')) {
                     const meta = await sock.groupMetadata(from);
-                    mentions = meta.participants.map(p => p.id); // Extraemos todos los IDs
+                    mentions = meta.participants.map(p => p.id); // Extrae todos los miembros para etiquetarlos de forma oculta
                 }
-
-                // Enviamos el mensaje limpio con las menciones ocultas en la API
                 await sock.sendMessage(from, { text: finalTxt, mentions });
-                
                 const sticker = await obtenerGifAleatorio('attention alert news announcement', 'https://media.giphy.com/media/xT9IgzoKnwFNmISR9I/giphy.gif');
                 if (sticker) await sock.sendMessage(from, { sticker });
-            } catch { 
-                await sock.sendMessage(from, { text: '❌ Error al enviar anuncio.' }, { quoted: m }); 
-            }
+            } catch { await sock.sendMessage(from, { text: '❌ Error al enviar anuncio.' }, { quoted: m }); }
         }
 
         if (command === 'bal') {
