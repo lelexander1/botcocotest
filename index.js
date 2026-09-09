@@ -251,7 +251,29 @@ async function connectToWhatsApp() {
         }
 
         if (command === 'menu' || command === 'help') {
-            const menu = `⚡ *PANEL PRINCIPAL - CocoBot* ⚡\n────────────────────────\n👤 *Creado por:* Alencito\n🚀 *Estado:* Online 24/7 (Anti-caídas)\n────────────────────────\n\n📌 *COMANDOS:* \n> '#ia [texto]' \n> '#chistes' \n> '#imagen [tema]' \n> '#still [texto / ver / borrar]' \n> '#edad [número]', '#frase [texto]', '#setsticker' \n> '#perfil [@usuario]' \n> '#recordatorio [tiempo] [mensaje]' \n> '#misrecordatorios', '#borrarrec [id]' \n> '#s', '#gif', '#toimg', '#kill [@usuario]' \n> '#consumo' (Admin), '#topmsg', '#lowmsg' \n> '#genero [hombre/mujer/cosa]', '#casarse [@usuario]', '#aceptar' \n> '#cumple DD/MM', '#cumples' \n> '#setwelcome', '#setgoodbye', '#untimeout' \n> '#flip', '#del', '#anuncio', '#bal', '#work', '#daily'`;
+            const menu = `⚡ *PANEL PRINCIPAL - CocoBot* ⚡\n` +
+                `────────────────────────\n` +
+                `👤 *Creado por:* Alencito/Gabo\n` +
+                `🚀 *Estado:* Online 24/7 \n` +
+                `────────────────────────\n\n` +
+                `📌 *COMANDOS Y FUNCIONES:* \n\n` +
+                `🤖 *#ia [texto]*\n   ↳ Consulta preguntas a la Inteligencia Artificial.\n\n` +
+                `😂 *#chistes*\n   ↳ Envía un chiste corto de manera aleatoria.\n\n` +
+                `🖼️ *#imagen [tema]*\n   ↳ Busca y envía una foto aleatoria de alta calidad.\n\n` +
+                `📦 *#still [texto / ver / borrar]*\n   ↳ Tu banco personal de notas o frases guardadas.\n\n` +
+                `👤 *#edad [nú), #frase [txt], #setsticker*\n   ↳ Configura tu edad, frase personal y sticker de perfil.\n\n` +
+                `👁️ *#perfil [@usuario]*\n   ↳ Muestra tu tarjeta de perfil completa y tu sticker ID.\n\n` +
+                `⏰ *#recordatorio [tiempo] [mensaje]*\n   ↳ Programa un recordatorio que te llegará por mensaje privado.\n\n` +
+                `📋 *#misrecordatorios / #borrarrec [id]*\n   ↳ Administra tus recordatorios pendientes.\n\n` +
+                `🎨 *#s / #gif / #toimg*\n   ↳ Crea stickers de imágenes, videos animados o pasa stickers a foto.\n\n` +
+                `🥷 *#kill [@usuario]*\n   ↳ Expulsa a un usuario de un grupo con un GIF (Solo Admins).\n\n` +
+                `📊 *#consumo / #topmsg / #lowmsg*\n   ↳ Muestra recursos del servidor y el ranking de mensajes en el chat.\n\n` +
+                `⚧️ *#genero [hombre/mujer/cosa]*\n   ↳ Actualiza tu género en el bot.\n\n` +
+                `💍 *#casarse [@usuario] / #aceptar*\n   ↳ Propón matrimonio y cásate con otro usuario.\n\n` +
+                `🎂 *#cumple DD/MM / #cumples*\n   ↳ Registra tu cumpleaños y consulta los próximos festejos.\n\n` +
+                `⚙️ *#setwelcome / #setgoodbye / #untimeout*\n   ↳ Configura mensajes de bienvenida/despedida y quita castigos.\n\n` +
+                `🪙 *#bal / #work / #daily / #flip / #del / #anuncio*\n   ↳ Comandos de economía, minijuegos, monedas y moderación extra.`;
+
             return await sock.sendMessage(from, { text: menu }, { quoted: m });
         }
 
@@ -565,7 +587,7 @@ async function connectToWhatsApp() {
                 const buf = await downloadMediaMessage(targetMsg, 'buffer', {}, { logger: pino({ level: 'silent' }) });
                 const sticker = new Sticker(buf, {
                     pack: 'CocoBot Pack',
-                    author: 'Alencito',
+                    author: 'Alencito/Gabo',
                     type: StickerTypes.DEFAULT,
                     categories: ['🤩', '🎉'],
                     quality: 80
@@ -597,7 +619,7 @@ async function connectToWhatsApp() {
 
                 const sticker = new Sticker(buf, {
                     pack: 'CocoBot Pack',
-                    author: 'Alencito',
+                    author: 'Alencito/Gabo',
                     type: StickerTypes.ANIMATED,
                     categories: ['🤩', '🎉'],
                     quality: 50,
