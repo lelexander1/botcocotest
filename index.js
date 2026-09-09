@@ -1,6 +1,6 @@
 const { default: makeWASocket, DisconnectReason, downloadMediaMessage, initAuthCreds, BufferJSON } = require('@whiskeysockets/baileys');
 const pino = require('pino');
-const http = require('http');
+const http = http = require('http');
 const { MongoClient } = require('mongodb');
 const sharp = require('sharp');
 const axios = require('axios');
@@ -258,6 +258,7 @@ async function connectToWhatsApp() {
                 `────────────────────────\n\n` +
                 `📌 *COMANDOS Y FUNCIONES:* \n\n` +
                 `🤖 *#ia [texto]*\n   ↳ Consulta preguntas a la Inteligencia Artificial.\n\n` +
+                `🙃 *#si*\n   ↳ Envía la palabra a la IA para recibir una respuesta ingeniosa contraria (ej: un rotundo "No").\n\n` +
                 `😂 *#chistes*\n   ↳ Envía un chiste corto de manera aleatoria.\n\n` +
                 `🖼️ *#imagen [tema]*\n   ↳ Busca y envía una foto aleatoria de alta calidad.\n\n` +
                 `📦 *#still [texto / ver / borrar]*\n   ↳ Tu banco personal de notas o frases guardadas.\n\n` +
@@ -277,6 +278,17 @@ async function connectToWhatsApp() {
                 `🪙 *#bal / #work / #daily / #flip / #del / #anuncio*\n   ↳ Economía, juegos, moderación y anuncios a todos (ocultos).`;
 
             return await sock.sendMessage(from, { text: menu }, { quoted: m });
+        }
+
+        // --- NUEVO COMANDO #SI (PROCESADO POR IA CON RESPUESTA INGENIOSA / "NO") ---
+        if (command === 'si') {
+            try {
+                const promptIa = "El usuario acaba de decir o invocar la palabra '#si'. Analiza esta palabra con sarcasmo o humor y respóndele de manera tajante, creativa o generando un concepto contrario como un rotundo 'No' o algo gracioso relacionado.";
+                const res = await ai.models.generateContent({ model: 'gemini-3.6-flash', contents: promptIa });
+                return await sock.sendMessage(from, { text: `🤖 *CocoBot IA*:\n\n${res.text || '¡No!'}` }, { quoted: m });
+            } catch {
+                return await sock.sendMessage(from, { text: '❌ ¡No!' }, { quoted: m });
+            }
         }
 
         if (command === 'chistes' || command === 'chiste') {
@@ -354,7 +366,6 @@ async function connectToWhatsApp() {
             return await sock.sendMessage(from, { text: `✅ Frase de perfil actualizada correctamente.` }, { quoted: m });
         }
 
-        // --- COMANDOS DE REDES SOCIALES PARA EL PERFIL ---
         if (['facebook', 'instagram', 'discord', 'spotify', 'x'].includes(command)) {
             const redLink = args.join(' ');
             if (!redLink) return await sock.sendMessage(from, { text: `⚠️ Escribe tu enlace o usuario de ${command}. Ej: *#${command} [enlace o usuario]*` }, { quoted: m });
@@ -420,7 +431,6 @@ async function connectToWhatsApp() {
             }
         }
 
-        // --- SISTEMA DE RECORDATORIOS (PRIVADOS Y GRUPALES CON FECHA O TIEMPO) ---
         if (command === 'recordatorio' || command === 'rec' || command === 'recordatorio-grupo' || command === 'recg') {
             const esGrupal = command.includes('grupo') || command === 'recg';
             const destinoJid = esGrupal ? from : sender;
@@ -615,7 +625,7 @@ async function connectToWhatsApp() {
             try {
                 await sock.sendMessage(from, { text: '🤖 Pensando respuesta...' }, { quoted: m });
                 const res = await ai.models.generateContent({ model: 'gemini-3.6-flash', contents: query });
-                await sock.sendMessage(from, { text: `🤖 *Gemini IA*:\n\n${res.text || 'Sin respuesta.'}` }, { quoted: m });
+                await sock.sendMessage(from, { text: `${res.text || 'Sin respuesta.'}` }, { quoted: m });
             } catch { await sock.sendMessage(from, { text: '❌ Error al conectar con Gemini.' }, { quoted: m }); }
         }
 
@@ -666,7 +676,6 @@ async function connectToWhatsApp() {
             } else { await sock.sendMessage(from, { text: 'ℹ️ El usuario no tiene timeout activo.' }, { quoted: m }); }
         }
 
-        // --- COMANDO STICKER CORREGIDO (SIN DISTORSIÓN Y SIN NOMBRE DE PACK) ---
         if (command === 's' || command === 'sticker') {
             const q = m.message.extendedTextMessage?.contextInfo?.quotedMessage;
             const isImage = messageType === 'imageMessage' || q?.imageMessage;
@@ -751,7 +760,6 @@ async function connectToWhatsApp() {
             try { await sock.sendMessage(from, { delete: { remoteJid: from, id: info.stanzaId, participant: info.participant || sender } }); } catch { await sock.sendMessage(from, { text: '❌ Asegúrate de que el bot sea administrador.' }, { quoted: m }); }
         }
 
-        // --- COMANDO ANUNCIO CON MENCIONES OCULTAS ---
         if (command === 'anuncio') {
             if (!sender.includes('275028952228088')) return;
             const text = args.join(' ');
