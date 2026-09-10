@@ -27,13 +27,14 @@ const server = http.createServer(async (req, res) => {
         return;
     }
 
-    
     if (req.url.startsWith('/api/perfil')) {
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
         try {
             const urlParams = new URL(req.url, `http://${req.headers.host}`);
             const queryUser = urlParams.searchParams.get('user')?.trim();
             
+            console.log(`🔍 Web API - Buscando usuario: "${queryUser}"`);
+
             if (!queryUser) {
                 res.end(JSON.stringify({ error: 'Ingresa un número de usuario válido' }));
                 return;
@@ -42,7 +43,7 @@ const server = http.createServer(async (req, res) => {
             const dbClient = new MongoClient(process.env.MONGODB_URI);
             await dbClient.connect();
             
-            // Buscamos ignorando mayúsculas y permitiendo coincidencias parciales del número
+            // Búsqueda flexible por coincidencia de texto en el JID
             const userDoc = await dbClient.db('whatsapp_bot').collection('users').findOne({ 
                 jid: { $regex: queryUser, $options: 'i' } 
             });
@@ -50,10 +51,12 @@ const server = http.createServer(async (req, res) => {
             await dbClient.close();
 
             if (!userDoc) {
+                console.log(`⚠️ Web API - No se encontró usuario para: "${queryUser}"`);
                 res.end(JSON.stringify({ error: 'No se encontró un perfil registrado con ese número' }));
                 return;
             }
 
+            console.log(`✅ Web API - Perfil encontrado para: ${userDoc.jid}`);
             res.end(JSON.stringify({
                 jid: userDoc.jid ? userDoc.jid.split('@')[0] : 'Desconocido',
                 coins: userDoc.coins || 0,
@@ -65,10 +68,12 @@ const server = http.createServer(async (req, res) => {
                 redes: userDoc.redes || {}
             }));
         } catch (e) {
+            console.error('❌ Error en Web API /api/perfil:', e);
             res.end(JSON.stringify({ error: 'Error interno al consultar la base de datos' }));
         }
         return;
     }
+
 
     // Resto del servidor HTTP estático (tarjeta web)
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
