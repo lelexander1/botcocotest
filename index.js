@@ -37,6 +37,15 @@ const stickerTimeouts = new Map();
 const propuestasMatrimonio = new Map(); 
 const triviaActiva = new Map(); // chatId -> { pregunta, opciones, correctaIndex, expira }
 
+// Rastreador de consumo de APIs y tokens
+const apiUsageStats = {
+    geminiRequests: 0,
+    totalPromptTokens: 0,
+    totalCandidatesTokens: 0,
+    totalTokensUsed: 0,
+    coinGeckoRequests: 0
+};
+
 // Adaptador de sesión en MongoDB Atlas con purga automática de 7 días
 async function useMongoDBAuthState(collection) {
     const writeData = async (data, id) => {
@@ -125,7 +134,6 @@ function esOwner(sender) {
 }
 
 // ===== CONTENIDO +18 (humor adulto, sin contenido sexual explícito) =====
-
 const chistesPicantesList = [
     "Mi terapeuta dice que tengo problemas para dejar ir el pasado.\nMi ex dice que tengo problemas para dejar de escribirle a las 2am.",
     "El matrimonio es como un dispositivo Bluetooth: cuando ya está emparejado, se conecta automáticamente a los peores momentos posibles.",
@@ -150,7 +158,7 @@ const verdadesList = [
 const retosList = [
     "Manda un audio cantando la primera canción que suene en tu playlist, sin explicar contexto.",
     "Cambia tu foto de perfil por 1 hora a la foto más random de tu galería.",
-    "Escribe \"te extraño\" a la última persona con la que hablaste antes de este grupo (puede ser random, avisa que es un reto).",
+    "Escribe \"te extraño\" a la última persona con la que hablaste antes de este grupo.",
     "Manda tu última foto tomada sin explicar de qué es.",
     "Escribe un estado poniendo la letra de una canción vergonzosa, déjalo 30 minutos.",
     "Deja que el grupo elija tu próxima foto de perfil por hoy.",
@@ -182,12 +190,6 @@ async function connectToWhatsApp() {
     const groupsCollection = db.collection('groups');
     const remindersCollection = db.collection('reminders');
     const bankCollection = db.collection('user_bank');
-    // FIX BUG 1: colección separada para el contador de mensajes por grupo.
-    // Antes, este contador vivía en `usersCollection` filtrado por {jid, groupId},
-    // mientras que el resto del perfil (coins, edad, frase...) vivía en el MISMO
-    // collection filtrado solo por {jid}. Mongo hace match por cualquier documento
-    // que contenga ese jid (tenga o no groupId), así que #work/#daily/#bal podían
-    // leer o escribir en el documento equivocado. Separarlo evita el choque.
     const groupStatsCollection = db.collection('group_stats');
 
     try {
@@ -251,7 +253,7 @@ async function connectToWhatsApp() {
         const sender = m.key.participant || from;
         const messageType = Object.keys(m.message)[0];
 
-        // --- CONTADOR DE MENSAJES POR GRUPO (FIX: ahora en su propia colección) ---
+        // --- CONTADOR DE MENSAJES POR GRUPO ---
         if (from.endsWith('@g.us')) {
             try {
                 await groupStatsCollection.updateOne(
@@ -342,7 +344,7 @@ async function connectToWhatsApp() {
                 `🌶️ *#chistenegro / #picante*\n   ↳ Humor adulto y ácido (sin contenido sexual explícito).\n\n` +
                 `🎯 *#vor [verdad/reto] [@usuario]*\n   ↳ Juego de verdad o reto, picante pero sin contenido explícito.\n\n` +
                 `🧠 *#trivia18 / #trivia [letra]*\n   ↳ Trivia de temas adultos, responde a tiempo y gana coins.\n\n` +
-                `🎰 *#apostar / #ruleta / #slots [monto]*\n   ↳ Mini-casino: apuesta tus coins y multiplícalas (o piérdelas).`;
+                `🎰 *#apostar / #ruleta / #slots [monto]*\n   ↳ Mini-casino: apuesta tus coins y multiplícalas.`;
 
             return await sock.sendMessage(from, { text: menu }, { quoted: m });
         }
@@ -366,6 +368,8 @@ async function connectToWhatsApp() {
                 const headers = process.env.COINGECKO_API_KEY ? { 'x-cg-demo-api-key': process.env.COINGECKO_API_KEY } : {};
                 const url = `https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(moneda)}&vs_currencies=usd,eur&include_24hr_change=true`;
                 const response = await axios.get(url, { headers });
+                
+                apiUsageStats.coinGeckoRequests++; // Contabilizamos llamada a CoinGecko
                 const data = response.data;
 
                 if (!data[moneda]) {
@@ -516,7 +520,7 @@ async function connectToWhatsApp() {
                 return await sock.sendMessage(from, { text: `❌ No tienes suficientes coins. Tu saldo es *🪙 ${saldoRuleta}*.` }, { quoted: m });
             }
 
-            const numeroSalido = Math.floor(Math.random() * 37); // 0-36
+            const numeroSalido = Math.floor(Math.random() * 37);
             let colorSalido = 'verde';
             if (numeroSalido !== 0) colorSalido = (numeroSalido % 2 === 0) ? 'negro' : 'rojo';
 
@@ -567,7 +571,6 @@ async function connectToWhatsApp() {
             if (!query) return await sock.sendMessage(from, { text: '⚠️ Escribe qué imagen buscas. Ej: *#imagen paisajes* o *#imagen gatos*' }, { quoted: m });
             try {
                 await sock.sendMessage(from, { text: '🔍 Buscando imagen...' }, { quoted: m });
-                // Usamos Picsum Photos para asegurar que la imagen siempre cargue correctamente
                 const imageUrl = `https://picsum.photos/800/600?random=${Math.random()}`;
                 await sock.sendMessage(from, { image: { url: imageUrl }, caption: `🖼️ Resultado para: *${query}*` }, { quoted: m });
             } catch {
@@ -832,6 +835,26 @@ async function connectToWhatsApp() {
             return await sock.sendMessage(from, { text: statsText }, { quoted: m });
         }
 
+        // --- COMANDO OCULTO PARA MONITOREAR TOKENS Y LLAMADAS A API ---
+        if (command === 'tokens' || command === 'apistats' || command === 'usoapis') {
+            if (!esOwner(sender)) return; // Exclusivo para ti
+
+            const reporteTokens = `📊 *REPORTE DE CONSUMO DE APIS* 📊\n` +
+                `────────────────────────\n` +
+                `🤖 *Google Gemini AI:*\n` +
+                `   • Peticiones realizadas: \`${apiUsageStats.geminiRequests}\`\n` +
+                `   • Tokens de entrada (Prompt): \`${apiUsageStats.totalPromptTokens}\`\n` +
+                `   • Tokens de salida (Respuesta): \`${apiUsageStats.totalCandidatesTokens}\`\n` +
+                `   • 📌 *Total Tokens Usados:* \`${apiUsageStats.totalTokensUsed}\`\n\n` +
+                `🪙 *CoinGecko API (Criptomonedas):*\n` +
+                `   • Peticiones de precios: \`${apiUsageStats.coinGeckoRequests}\`\n` +
+                `   • Límite plan Demo (Gratis): \`30 llamadas / minuto\`\n` +
+                `────────────────────────\n` +
+                `💡 *Nota:* Los contadores se reinician si el contenedor de Render se reinicia.`;
+
+            return await sock.sendMessage(from, { text: reporteTokens }, { quoted: m });
+        }
+
         if (command === 'topmsg' || command === 'masactivos') {
             if (!from.endsWith('@g.us')) return await sock.sendMessage(from, { text: '⚠️ Este comando solo se puede usar en grupos.' }, { quoted: m });
 
@@ -887,6 +910,15 @@ async function connectToWhatsApp() {
             try {
                 await sock.sendMessage(from, { text: '🤖 Pensando respuesta...' }, { quoted: m });
                 const res = await ai.models.generateContent({ model: 'gemini-3.6-flash', contents: query });
+                
+                // Contabilizamos el uso de la API de Gemini y sus tokens reales
+                apiUsageStats.geminiRequests++;
+                if (res.usageMetadata) {
+                    apiUsageStats.totalPromptTokens += res.usageMetadata.promptTokenCount || 0;
+                    apiUsageStats.totalCandidatesTokens += res.usageMetadata.candidatesTokenCount || 0;
+                    apiUsageStats.totalTokensUsed += res.usageMetadata.totalTokenCount || 0;
+                }
+
                 await sock.sendMessage(from, { text: `${res.text || 'Sin respuesta.'}` }, { quoted: m });
             } catch { await sock.sendMessage(from, { text: '❌ Error al conectar con Gemini.' }, { quoted: m }); }
         }
@@ -1105,12 +1137,6 @@ function iniciarVerificadorRecordatorios(sock, remindersCollection) {
 
 function iniciarVerificadorCumpleaños(sock, usersCollection) {
     const groupId = '120363422057355283@g.us'; 
-    // FIX BUG 2: antes `ultimoControl` se inicializaba como objeto {} y luego se
-    // reasignaba/comparaba como string. Funcionaba "por casualidad" porque JS
-    // permite reasignar el tipo, pero es frágil: si Render llegara a correr más
-    // de una instancia, o el proceso se reinicia justo a medianoche, se podían
-    // enviar cumpleaños duplicados. Ahora se controla con una variable de tipo
-    // string consistente, inicializada en null.
     let ultimoControlEnviado = null;
 
     setInterval(async () => {
