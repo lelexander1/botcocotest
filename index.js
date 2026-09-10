@@ -460,7 +460,7 @@ async function connectToWhatsApp() {
             }
         }
 
-        // --- COMANDO DE NOTA DE VOZ (TTS) ---
+        
         if (command === 'voz' || command === 'tts') {
             const textoVoz = args.join(' ');
             if (!textoVoz) {
@@ -468,7 +468,7 @@ async function connectToWhatsApp() {
             }
 
             try {
-                await sock.sendMessage(from, { text: '🎙️ Generando nota de voz...' }, { quoted: m });
+                await sock.sendMessage(from, { text: '🎙️ Generando audio...' }, { quoted: m });
 
                 const tts = new gtts(textoVoz, 'es');
                 const tempFilePath = path.join(os.tmpdir(), `voice_${Date.now()}.mp3`);
@@ -476,17 +476,18 @@ async function connectToWhatsApp() {
                 tts.save(tempFilePath, async function () {
                     try {
                         const audioBuffer = fs.readFileSync(tempFilePath);
-                        // FIX: mimetype ajustado a ogg/opus para compatibilidad total en Android y iOS
+                        
+                        // Enviamos como audio estándar con mimetype mp3 para que el celular lo reproduzca sin problemas
                         await sock.sendMessage(from, { 
                             audio: audioBuffer, 
-                            mimetype: 'audio/ogg; codecs=opus', 
-                            ptt: true 
+                            mimetype: 'audio/mpeg', 
+                            ptt: false 
                         }, { quoted: m });
 
                         fs.unlinkSync(tempFilePath);
                     } catch (err) {
                         console.error('Error al enviar el audio:', err);
-                        await sock.sendMessage(from, { text: '❌ No se pudo enviar la nota de voz.' }, { quoted: m });
+                        await sock.sendMessage(from, { text: '❌ No se pudo enviar el audio.' }, { quoted: m });
                     }
                 });
             } catch (err) {
