@@ -299,9 +299,11 @@ async function connectToWhatsApp() {
         if (!m.message || m.key.fromMe) return;
 
         const from = m.key.remoteJid;
-        const senderRaw = m.key.participant || from;
-        const sender = senderRaw.includes('@lid') && from.endsWith('@g.us') ? from : senderRaw;
-        const messageType = Object.keys(m.message)[0];
+        let sender = m.key.participant || from;
+        // Limpiamos los puertos de sesión para evitar multicuentas, pero sin usar el ID del grupo
+        if (sender.includes(':')) {
+            sender = sender.split(':')[0] + sender.substring(sender.indexOf('@'));
+        }
 
         // ==========================================
         // SISTEMA DE MUTEO INTERCEPTOR
