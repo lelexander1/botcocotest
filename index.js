@@ -16,6 +16,13 @@ const PORT = process.env.PORT || 3000;
 
 // Servidor HTTP web con un panel visual ultraligero y cero consumo extra
 const server = http.createServer((req, res) => {
+    // Ruta de API interna ligera para consultar estado sin tocar base de datos
+    if (req.url === '/api/stats') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ status: 'online', uptime: process.uptime() }));
+        return;
+    }
+
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     res.end(`
         <!DOCTYPE html>
@@ -60,7 +67,7 @@ const cooldowns = new Map();
 const stickerSpamTracker = new Map(); 
 const stickerTimeouts = new Map();     
 const propuestasMatrimonio = new Map(); 
-const triviaActiva = new Map(); // chatId -> { pregunta, opciones, correctaIndex, expira }
+const triviaActiva = new Map(); 
 
 // Rastreador de consumo de APIs y tokens
 const apiUsageStats = {
@@ -153,12 +160,10 @@ function calcularDiasFaltantes(fechaStr) {
     return Math.ceil((proximo - hoyPeru) / (1000 * 60 * 60 * 24));
 }
 
-// Helper: verifica si el emisor es el dueño/owner del bot
 function esOwner(sender) {
     return sender.includes('275028952228088');
 }
 
-// ===== CONTENIDO +18 (humor adulto, sin contenido sexual explícito) =====
 const chistesPicantesList = [
     "Mi terapeuta dice que tengo problemas para dejar ir el pasado.\nMi ex dice que tengo problemas para dejar de escribirle a las 2am.",
     "El matrimonio es como un dispositivo Bluetooth: cuando ya está emparejado, se conecta automáticamente a los peores momentos posibles.",
@@ -278,7 +283,6 @@ async function connectToWhatsApp() {
         const sender = m.key.participant || from;
         const messageType = Object.keys(m.message)[0];
 
-        // --- CONTADOR DE MENSAJES POR GRUPO ---
         if (from.endsWith('@g.us')) {
             try {
                 await groupStatsCollection.updateOne(
@@ -289,7 +293,6 @@ async function connectToWhatsApp() {
             } catch {}
         }
 
-        // --- SISTEMA ANTISPAM DE STICKERS ---
         if (from.endsWith('@g.us') && messageType === 'stickerMessage') {
             const ahora = Date.now();
             if (stickerTimeouts.has(sender)) {
@@ -346,7 +349,7 @@ async function connectToWhatsApp() {
                 `────────────────────────\n\n` +
                 `📌 *COMANDOS Y FUNCIONES:* \n\n` +
                 `🤖 *#ia [texto]*\n   ↳ Consulta preguntas a la Inteligencia Artificial.\n\n` +
-                `🎙️ *#voz [texto]*\n   ↳ Convierte texto a nota de voz (TTS).\n\n` +
+                `🎙️ *#voz [texto]*\n   ↳ Convierte texto a nota de voz.\n\n` +
                 `🙃 *#si*\n   ↳ Envía la palabra a la IA para recibir una respuesta ingeniosa contraria.\n\n` +
                 `🪙 *#crypto [moneda]*\n   ↳ Consulta precios y variación de criptomonedas en tiempo real.\n\n` +
                 `😂 *#chistes*\n   ↳ Envía un chiste corto de manera aleatoria.\n\n` +
@@ -385,7 +388,6 @@ async function connectToWhatsApp() {
             }
         }
 
-        // --- MAPA DE ACCIONES Y REACCIONES INTERACTIVAS ---
         const accionesMap = {
             angry: { query: 'anime angry mad', action: 'está enojado/a 💢' },
             enojado: { query: 'anime angry mad', action: 'está enojado/a 💢' },
@@ -484,7 +486,7 @@ async function connectToWhatsApp() {
             }
         }
 
-        
+        // --- COMANDO DE AUDIO (FIX REPRODUCCIÓN MÓVIL) ---
         if (command === 'voz' || command === 'tts') {
             const textoVoz = args.join(' ');
             if (!textoVoz) {
@@ -500,8 +502,7 @@ async function connectToWhatsApp() {
                 tts.save(tempFilePath, async function () {
                     try {
                         const audioBuffer = fs.readFileSync(tempFilePath);
-                        
-                        // Enviamos como audio estándar con mimetype mp3 para que el celular lo reproduzca sin problemas
+                        // FIX: Envío como audio estándar mp3 para compatibilidad total con celulares
                         await sock.sendMessage(from, { 
                             audio: audioBuffer, 
                             mimetype: 'audio/mpeg', 
@@ -520,7 +521,6 @@ async function connectToWhatsApp() {
             }
         }
 
-        // --- COMANDO DE CRIPTOMONEDAS (#CRYPTO [moneda]) ---
         if (command === 'crypto' || command === 'precio' || command === 'cripto') {
             const moneda = args[0]?.toLowerCase() || 'bitcoin';
             try {
@@ -568,8 +568,6 @@ async function connectToWhatsApp() {
             const chisteAleatorio = chistesList[Math.floor(Math.random() * chistesList.length)];
             return await sock.sendMessage(from, { text: `😂 *Chiste:* \n\n${chisteAleatorio}` }, { quoted: m });
         }
-
-        // ===== COMANDOS +18 (humor adulto, sin contenido sexual explícito) =====
 
         if (command === 'chistenegro' || command === 'picante' || command === 'chistepicante') {
             const chistePicante = chistesPicantesList[Math.floor(Math.random() * chistesPicantesList.length)];
@@ -996,7 +994,6 @@ async function connectToWhatsApp() {
             return await sock.sendMessage(from, { text: statsText }, { quoted: m });
         }
 
-        // --- COMANDO OCULTO PARA MONITOREAR TOKENS Y LLAMADAS A API ---
         if (command === 'tokens' || command === 'apistats' || command === 'usoapis') {
             if (!esOwner(sender)) return;
 
@@ -1097,7 +1094,7 @@ async function connectToWhatsApp() {
             let txt = '🎂 *PRÓXIMOS CUMPLEAÑOS* 🎂\n\n';
             all.forEach((u, i) => {
                 const d = calcularDiasFaltantes(u.cumple);
-                txt += `${i + 1}. @${u.jid.split('@')[0]} ➡️ *${u.cumple}* ${d === 0 ? '🎉 *¡Es hoy!*' : `(Faltan ${d} días)`}\n`;
+                txt += `${i + 1}. @${u.jid.split('@')[0]} ➡️ *${u.cumple}* ${d === 0 ? '🎉 *¡Es hoy!*' : `(Faltan ${d} days)`}\n`;
             });
             await sock.sendMessage(from, { text: txt, mentions: all.map(u => u.jid) }, { quoted: m });
         }
