@@ -476,9 +476,10 @@ async function connectToWhatsApp() {
                 tts.save(tempFilePath, async function () {
                     try {
                         const audioBuffer = fs.readFileSync(tempFilePath);
+                        // FIX: mimetype ajustado a ogg/opus para compatibilidad total en Android y iOS
                         await sock.sendMessage(from, { 
                             audio: audioBuffer, 
-                            mimetype: 'audio/mp4', 
+                            mimetype: 'audio/ogg; codecs=opus', 
                             ptt: true 
                         }, { quoted: m });
 
