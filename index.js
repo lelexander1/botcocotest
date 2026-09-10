@@ -8,6 +8,7 @@ const { Sticker, createSticker, StickerTypes } = require('wa-sticker-formatter')
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const gtts = require('gtts');
 const { GoogleGenAI } = require('@google/genai');
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
@@ -321,6 +322,7 @@ async function connectToWhatsApp() {
                 `────────────────────────\n\n` +
                 `📌 *COMANDOS Y FUNCIONES:* \n\n` +
                 `🤖 *#ia [texto]*\n   ↳ Consulta preguntas a la Inteligencia Artificial.\n\n` +
+                `🎙️ *#voz [texto]*\n   ↳ Convierte texto a nota de voz (TTS).\n\n` +
                 `🙃 *#si*\n   ↳ Envía la palabra a la IA para recibir una respuesta ingeniosa contraria.\n\n` +
                 `🪙 *#crypto [moneda]*\n   ↳ Consulta precios y variación de criptomonedas en tiempo real.\n\n` +
                 `😂 *#chistes*\n   ↳ Envía un chiste corto de manera aleatoria.\n\n` +
@@ -359,6 +361,40 @@ async function connectToWhatsApp() {
             }
         }
 
+        // --- COMANDO DE NOTA DE VOZ (TTS) ---
+        if (command === 'voz' || command === 'tts') {
+            const textoVoz = args.join(' ');
+            if (!textoVoz) {
+                return await sock.sendMessage(from, { text: '⚠️ Escribe el texto que deseas convertir a voz. Ej: *#voz Hola a todos*' }, { quoted: m });
+            }
+
+            try {
+                await sock.sendMessage(from, { text: '🎙️ Generando nota de voz...' }, { quoted: m });
+
+                const tts = new gtts(textoVoz, 'es');
+                const tempFilePath = path.join(os.tmpdir(), `voice_${Date.now()}.mp3`);
+
+                tts.save(tempFilePath, async function () {
+                    try {
+                        const audioBuffer = fs.readFileSync(tempFilePath);
+                        await sock.sendMessage(from, { 
+                            audio: audioBuffer, 
+                            mimetype: 'audio/mp4', 
+                            ptt: true 
+                        }, { quoted: m });
+
+                        fs.unlinkSync(tempFilePath);
+                    } catch (err) {
+                        console.error('Error al enviar el audio:', err);
+                        await sock.sendMessage(from, { text: '❌ No se pudo enviar la nota de voz.' }, { quoted: m });
+                    }
+                });
+            } catch (err) {
+                console.error('Error en comando voz:', err);
+                await sock.sendMessage(from, { text: '❌ Ocurrió un error al procesar el audio.' }, { quoted: m });
+            }
+        }
+
         // --- COMANDO DE CRIPTOMONEDAS (#CRYPTO [moneda]) ---
         if (command === 'crypto' || command === 'precio' || command === 'cripto') {
             const moneda = args[0]?.toLowerCase() || 'bitcoin';
@@ -369,7 +405,7 @@ async function connectToWhatsApp() {
                 const url = `https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(moneda)}&vs_currencies=usd,eur&include_24hr_change=true`;
                 const response = await axios.get(url, { headers });
                 
-                apiUsageStats.coinGeckoRequests++; // Contabilizamos llamada a CoinGecko
+                apiUsageStats.coinGeckoRequests++;
                 const data = response.data;
 
                 if (!data[moneda]) {
@@ -837,7 +873,7 @@ async function connectToWhatsApp() {
 
         // --- COMANDO OCULTO PARA MONITOREAR TOKENS Y LLAMADAS A API ---
         if (command === 'tokens' || command === 'apistats' || command === 'usoapis') {
-            if (!esOwner(sender)) return; // Exclusivo para ti
+            if (!esOwner(sender)) return;
 
             const reporteTokens = `📊 *REPORTE DE CONSUMO DE APIS* 📊\n` +
                 `────────────────────────\n` +
@@ -911,7 +947,6 @@ async function connectToWhatsApp() {
                 await sock.sendMessage(from, { text: '🤖 Pensando respuesta...' }, { quoted: m });
                 const res = await ai.models.generateContent({ model: 'gemini-3.6-flash', contents: query });
                 
-                // Contabilizamos el uso de la API de Gemini y sus tokens reales
                 apiUsageStats.geminiRequests++;
                 if (res.usageMetadata) {
                     apiUsageStats.totalPromptTokens += res.usageMetadata.promptTokenCount || 0;
