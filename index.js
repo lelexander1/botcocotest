@@ -43,7 +43,10 @@ const server = http.createServer(async (req, res) => {
             const dbClient = new MongoClient(process.env.MONGODB_URI);
             await dbClient.connect();
             
-            // Regex flexible: busca los dígitos seguidos opcionalmente por :dispositivo y @s.whatsapp.net
+            // DIAGNÓSTICO: Veremos todos los JIDs que hay guardados en la base de datos en los logs de Render
+            const todosLosUsuarios = await dbClient.db('whatsapp_bot').collection('users').find({}).toArray();
+            console.log("📋 JIDs guardados en MongoDB:", todosLosUsuarios.map(u => u.jid));
+
             const regexFlexible = new RegExp(`^${queryUser}(:\\d+)?@s\\.whatsapp\\.net$|^${queryUser}$`, 'i');
             
             const userDoc = await dbClient.db('whatsapp_bot').collection('users').findOne({ 
@@ -75,7 +78,6 @@ const server = http.createServer(async (req, res) => {
         }
         return;
     }
-
 
     // Resto del servidor HTTP estático (tarjeta web)
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
