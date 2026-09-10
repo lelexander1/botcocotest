@@ -216,7 +216,8 @@ function calcularDiasFaltantes(fechaStr) {
 }
 
 function esOwner(sender) {
-    return sender.includes('275028952228088');
+    // Añadimos tu número real para que te reconozca siempre como el dueño
+    return sender.includes('275028952228088') || sender.includes('51924876085');
 }
 
 // ==========================================
