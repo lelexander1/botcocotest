@@ -216,7 +216,6 @@ function calcularDiasFaltantes(fechaStr) {
 }
 
 function esOwner(sender) {
-    // Añadimos tu número real para que te reconozca siempre como el dueño
     return sender.includes('275028952228088') || sender.includes('51924876085');
 }
 
@@ -374,15 +373,19 @@ async function connectToWhatsApp() {
             await usersCollection.updateOne({ jid: sender }, { $set: { soles: checkUser.coins }, $unset: { coins: "" } });
         }
 
+
         // ==========================================
         // COMANDO PRIVADO DE DEPOSITO (DEV)
         // ==========================================
         if (command === 'devsoles') {
-            // Verificamos la clave secreta en cualquier parte del mensaje
+            // 1. Bloqueo de seguridad absoluto: Si no eres tú, el bot ignora el comando
+            if (!esOwner(sender)) return; 
+            
+            // 2. Validación de contraseña
             if (!body.includes('joko2026')) return; 
             
             const monto = parseInt(args[0]);
-            // Detecta si etiquetaste a alguien, si no, te lo da a ti
+            
             const target = m.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0] || sender;
 
             if (!monto || isNaN(monto)) {
@@ -437,7 +440,8 @@ async function connectToWhatsApp() {
                 `🪙 *#bal / #work / #daily / #flip / #apostar / #ruleta / #slots*\n   ↳ Economía y juegos.\n\n` +
                 `💸 *#yapear [monto] [@usuario]*\n   ↳ Transfiere dinero a otra persona.\n\n` +
                 `🛒 *#tienda / #comprar [item]*\n   ↳ Tienda exclusiva para gastar tus soles.\n\n` +
-                `🔇 *#mutear [@us] [min] / #fianza*\n   ↳ Sistema de cárcel y fianzas (Solo Admins).`;
+                `🔇 *#mutear [@us] [min] / #fianza*\n   ↳ Sistema de cárcel y fianzas (Solo Admins).\n\n` +
+                `🗑️ *#del / #delete*\n   ↳ Responde a un mensaje para borrarlo.`;
             return await sock.sendMessage(from, { text: menu }, { quoted: m });
         }
 
@@ -449,6 +453,33 @@ async function connectToWhatsApp() {
             } catch {
                 return await sock.sendMessage(from, { text: '❌ ¡No!' }, { quoted: m });
             }
+        }
+
+        // ==========================================
+        // COMANDO PARA BORRAR MENSAJES (#del)
+        // ==========================================
+        if (command === 'del' || command === 'delete') {
+            const info = m.message.extendedTextMessage?.contextInfo;
+            if (!info?.stanzaId) {
+                return await sock.sendMessage(from, { text: '⚠️ Responde al mensaje que deseas eliminar con *#del*.' }, { quoted: m });
+            }
+
+            const botNumber = sock.user.id.includes(':') ? sock.user.id.split(':')[0] + '@s.whatsapp.net' : sock.user.id;
+            const esMensajeDelBot = info.participant === botNumber || info.participant === sock.user.id;
+
+            const keyParaBorrar = {
+                remoteJid: from,
+                id: info.stanzaId,
+                fromMe: esMensajeDelBot,
+                participant: info.participant
+            };
+
+            try { 
+                await sock.sendMessage(from, { delete: keyParaBorrar }); 
+            } catch (err) { 
+                await sock.sendMessage(from, { text: '❌ No pude eliminar el mensaje. Si el mensaje es de otra persona, asegúrate de que tengo permisos de Administrador en el grupo.' }, { quoted: m }); 
+            }
+            return;
         }
 
         // ==========================================
@@ -1175,74 +1206,6 @@ async function connectToWhatsApp() {
             
             propuestasMatrimonio.delete(sender);
             return await sock.sendMessage(from, { text: `🎉 ¡VIVA LOS NOVIOS! @${proponte.split('@')[0]} y @${sender.split('@')[0]} están casados. 💍`, mentions: [sender, proponte] }, { quoted: m });
-        }
-
-        // ==========================================
-        // DIVORCIO (NORMAL Y ENCUESTA)
-        // ==========================================
-        if (command === 'divorcio' || command === 'divorciarse') {
-            const textoComando = args.join(' ').toLowerCase();
-            const esEncuesta = textoComando.includes('encuesta');
-            const target = m.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0];
-
-            const uData = await usersCollection.findOne({ jid: sender });
-            let parejas = uData?.pareja || [];
-            if (typeof parejas === 'string') parejas = [parejas];
-
-            if (parejas.length === 0) return await sock.sendMessage(from, { text: '⚠️ No estás casado/a.' }, { quoted: m });
-
-            let exPareja;
-            if (parejas.length === 1) {
-                exPareja = parejas[0]; 
-            } else {
-                if (!target) return await sock.sendMessage(from, { text: '⚠️ Estás casado/a con varias personas. Menciona a quién divorciar. Ej: *#divorcio @usuario*' }, { quoted: m });
-                if (!parejas.includes(target)) return await sock.sendMessage(from, { text: '⚠️ No estás casado/a con esa persona.' }, { quoted: m });
-                exPareja = target;
-            }
-
-            if (esEncuesta) {
-                if (!from.endsWith('@g.us')) return await sock.sendMessage(from, { text: '⚠️ Las encuestas solo funcionan en grupos.' }, { quoted: m });
-                if (encuestasDivorcio.has(from)) return await sock.sendMessage(from, { text: '⚠️ Ya hay una encuesta activa.' }, { quoted: m });
-
-                encuestasDivorcio.set(from, { demandante: sender, demandado: exPareja, votosSi: 0, votosNo: 0, votantes: new Set() });
-
-                await sock.sendMessage(from, { 
-                    text: `⚖️ *ENCUESTA DE DIVORCIO* ⚖️\n\n@${sender.split('@')[0]} pidió divorciarse de @${exPareja.split('@')[0]}.\n\nEl grupo decide su futuro:\n👉 Vota *#votesi* para separarlos.\n👉 Vota *#voteno* para mantenerlos juntos.\n\n⏱️ Cierre en 10 minutos.`, 
-                    mentions: [sender, exPareja] 
-                }, { quoted: m });
-
-                setTimeout(async () => {
-                    const encuesta = encuestasDivorcio.get(from);
-                    if (!encuesta) return;
-                    encuestasDivorcio.delete(from);
-
-                    if (encuesta.votosSi > encuesta.votosNo) {
-                        await usersCollection.updateOne({ jid: sender }, { $pull: { pareja: exPareja } });
-                        await usersCollection.updateOne({ jid: exPareja }, { $pull: { pareja: sender } });
-                        await sock.sendMessage(from, { text: `⚖️ *RESULTADOS*: ¡EL PUEBLO HABLÓ! (${encuesta.votosSi} a ${encuesta.votosNo})\nSe han divorciado oficialmente. 📝💔`, mentions: [sender, exPareja] });
-                    } else {
-                        await sock.sendMessage(from, { text: `⚖️ *RESULTADOS*: ¡DIVORCIO DENEGADO! (${encuesta.votosSi} a ${encuesta.votosNo})\nTendrán que seguir casados. 💍🔒` });
-                    }
-                }, 600000); 
-                return;
-            }
-
-            await usersCollection.updateOne({ jid: sender }, { $pull: { pareja: exPareja } });
-            await usersCollection.updateOne({ jid: exPareja }, { $pull: { pareja: sender } });
-
-            return await sock.sendMessage(from, { text: `📜 *DIVORCIO DE MUTUO ACUERDO* 📜\n\n@${sender.split('@')[0]} y @${exPareja.split('@')[0]} firmaron la separación en paz. Cada quien conserva sus soles. 📝💔`, mentions: [sender, exPareja] }, { quoted: m });
-        }
-
-        if (command === 'votesi' || command === 'voteno') {
-            const encuesta = encuestasDivorcio.get(from);
-            if (!encuesta) return await sock.sendMessage(from, { text: '⚠️ No hay ninguna encuesta activa.' }, { quoted: m });
-            if (encuesta.votantes.has(sender)) return await sock.sendMessage(from, { text: '⚠️ Ya registramos tu voto.' }, { quoted: m });
-            
-            encuesta.votantes.add(sender);
-            if (command === 'votesi') encuesta.votosSi++;
-            if (command === 'voteno') encuesta.votosNo++;
-            
-            return await sock.sendMessage(from, { text: `✅ Voto registrado. (SI: ${encuesta.votosSi} | NO: ${encuesta.votosNo})` }, { quoted: m });
         }
 
         if (command === 'bal' || command === 'balance') {
