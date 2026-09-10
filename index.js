@@ -931,29 +931,56 @@ async function connectToWhatsApp() {
             return await sock.sendMessage(from, { text: `🎉 ¡VIVA LOS NOVIOS! @${proponte.split('@')[0]} y @${sender.split('@')[0]} están casados. 💍`, mentions: [sender, proponte] }, { quoted: m });
         }
 
+
         if (command === 'divorcio' || command === 'divorciarse') {
             const tipo = args[0]?.toLowerCase();
             const userData = await usersCollection.findOne({ jid: sender });
-            if (!userData || !userData.pareja) return await sock.sendMessage(from, { text: '⚠️ No estás casado/a con nadie actualmente. 💔' }, { quoted: m });
+            
+            if (!userData || !userData.pareja) {
+                return await sock.sendMessage(from, { text: '⚠️ No estás casado/a con nadie actualmente. 💔' }, { quoted: m });
+            }
+
             const exPareja = userData.pareja;
+            const exData = await usersCollection.findOne({ jid: exPareja }) || {};
+
+            // Separación de estados en la base de datos
             await usersCollection.updateOne({ jid: sender }, { $unset: { pareja: "" } });
             await usersCollection.updateOne({ jid: exPareja }, { $unset: { pareja: "" } });
+
             if (tipo === 'juicio') {
-                const pierdeMitad = Math.random() < 0.5;
-                if (pierdeMitad) {
-                    const mitadCoins = Math.floor((userData.coins || 0) / 2);
-                    if (mitadCoins > 0) {
-                        await usersCollection.updateOne({ jid: sender }, { $inc: { coins: -mitadCoins } });
-                        await usersCollection.updateOne({ jid: exPareja }, { $inc: { coins: mitadCoins } });
+                const pierdeDemandante = Math.random() < 0.5;
+
+                if (pierdeDemandante) {
+                    // Pierdes tú: le das el 50% de tus monedas a tu ex
+                    const mitadMias = Math.floor((userData.coins || 0) * 0.5);
+                    if (mitadMias > 0) {
+                        await usersCollection.updateOne({ jid: sender }, { $inc: { coins: -mitadMias } });
+                        await usersCollection.updateOne({ jid: exPareja }, { $inc: { coins: mitadMias } });
                     }
-                    return await sock.sendMessage(from, { text: `⚖️ *JUICIO DE DIVORCIO* ⚖️\nEl juez ha dictaminado a favor de @${exPareja.split('@')[0]}. Has perdido el 50% de tus bienes (🪙 ${mitadCoins} coins). 📉💔`, mentions: [exPareja] }, { quoted: m });
+                    return await sock.sendMessage(from, { 
+                        text: `⚖️ *JUICIO DE DIVORCIO PERDIDO* ⚖️\n\nEl juez falló a favor de @${exPareja.split('@')[0]}. Perdiste el 50% de tus monedas (🪙 ${mitadMias} coins) como pensión compensatoria. 📉💔`, 
+                        mentions: [exPareja] 
+                    }, { quoted: m });
                 } else {
-                    return await sock.sendMessage(from, { text: `⚖️ *JUICIO DE DIVORCIO* ⚖️\nEl juez ha fallado a tu favor. Te has divorciado de @${exPareja.split('@')[0]} y conservado todos tus bienes. 📈🏛️`, mentions: [exPareja] }, { quoted: m });
+                    // Ganas tú: le quitas el 50% de las monedas a tu ex
+                    const mitadDeEx = Math.floor((exData.coins || 0) * 0.5);
+                    if (mitadDeEx > 0) {
+                        await usersCollection.updateOne({ jid: exPareja }, { $inc: { coins: -mitadDeEx } });
+                        await usersCollection.updateOne({ jid: sender }, { $inc: { coins: mitadDeEx } });
+                    }
+                    return await sock.sendMessage(from, { 
+                        text: `⚖️ *JUICIO DE DIVORCIO GANADO* ⚖️\n\n¡Ganaste el caso contra @${exPareja.split('@')[0]}! La corte te otorgó el 50% de sus bienes (🪙 ${mitadDeEx} coins). 🏛️🎉`, 
+                        mentions: [exPareja] 
+                    }, { quoted: m });
                 }
-            } else {
-                return await sock.sendMessage(from, { text: `📜 *DIVORCIO DE MUTUO ACUERDO* 📜\n@${sender.split('@')[0]} y @${exPareja.split('@')[0]} se han divorciado pacíficamente. 📝💔`, mentions: [sender, exPareja] }, { quoted: m });
             }
+
+            return await sock.sendMessage(from, { 
+                text: `📜 *DIVORCIO DE MUTUO ACUERDO* 📜\n\n@${sender.split('@')[0]} y @${exPareja.split('@')[0]} firmaron la separación en paz. Cada quien conserva sus monedas. 📝💔`, 
+                mentions: [sender, exPareja] 
+            }, { quoted: m });
         }
+
 
         if (command === 'ia' || command === 'gemini' || command === 'ai') {
             const query = args.join(' ');
