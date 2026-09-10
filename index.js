@@ -27,12 +27,12 @@ const server = http.createServer(async (req, res) => {
         return;
     }
 
-    // Ruta de API para buscar perfiles de usuarios por número o JID
+    
     if (req.url.startsWith('/api/perfil')) {
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
         try {
             const urlParams = new URL(req.url, `http://${req.headers.host}`);
-            const queryUser = urlParams.searchParams.get('user');
+            const queryUser = urlParams.searchParams.get('user')?.trim();
             
             if (!queryUser) {
                 res.end(JSON.stringify({ error: 'Ingresa un número de usuario válido' }));
@@ -41,9 +41,12 @@ const server = http.createServer(async (req, res) => {
 
             const dbClient = new MongoClient(process.env.MONGODB_URI);
             await dbClient.connect();
+            
+            // Buscamos ignorando mayúsculas y permitiendo coincidencias parciales del número
             const userDoc = await dbClient.db('whatsapp_bot').collection('users').findOne({ 
                 jid: { $regex: queryUser, $options: 'i' } 
             });
+            
             await dbClient.close();
 
             if (!userDoc) {
