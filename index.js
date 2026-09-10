@@ -57,9 +57,12 @@ const server = http.createServer(async (req, res) => {
             let parejasArray = userDoc.pareja || [];
             if (typeof parejasArray === 'string') parejasArray = [parejasArray];
 
+            // Si tiene coins guardados pero no soles en la base, usamos los coins para mostrar en la web
+            const saldoActual = userDoc.soles !== undefined ? userDoc.soles : (userDoc.coins || 0);
+
             res.end(JSON.stringify({
                 jid: userDoc.jid ? userDoc.jid.split('@')[0].split(':')[0] : 'Desconocido',
-                soles: userDoc.soles || 0,
+                soles: saldoActual,
                 edad: userDoc.edad || 'No especificada',
                 frase: userDoc.frase || 'Sin frase',
                 genero: userDoc.genero || 'No especificado',
@@ -94,7 +97,9 @@ const stickerSpamTracker = new Map();
 const stickerTimeouts = new Map();     
 const propuestasMatrimonio = new Map(); 
 const encuestasDivorcio = new Map(); 
+const juiciosActivos = new Map(); 
 const triviaActiva = new Map(); 
+const mutedUsers = new Map();
 
 const apiUsageStats = {
     geminiRequests: 0, totalPromptTokens: 0,
@@ -294,8 +299,23 @@ async function connectToWhatsApp() {
         if (!m.message || m.key.fromMe) return;
 
         const from = m.key.remoteJid;
-        const sender = m.key.participant || from;
+        const senderRaw = m.key.participant || from;
+        const sender = senderRaw.includes('@lid') && from.endsWith('@g.us') ? from : senderRaw;
         const messageType = Object.keys(m.message)[0];
+
+        // ==========================================
+        // SISTEMA DE MUTEO INTERCEPTOR
+        // ==========================================
+        const muteKey = `${from}-${sender}`;
+        if (mutedUsers.has(muteKey)) {
+            const muteInfo = mutedUsers.get(muteKey);
+            if (Date.now() < muteInfo.expireTime) {
+                try { await sock.sendMessage(from, { delete: m.key }); } catch {}
+                return;
+            } else {
+                mutedUsers.delete(muteKey);
+            }
+        }
 
         if (from.endsWith('@g.us')) {
             try {
@@ -341,6 +361,14 @@ async function connectToWhatsApp() {
         const args = body.slice(1).trim().split(/ +/);
         const command = args.shift().toLowerCase();
 
+        // ==========================================
+        // 🔄 MIGRACIÓN AUTOMÁTICA (DE COINS A SOLES)
+        // ==========================================
+        const checkUser = await usersCollection.findOne({ jid: sender });
+        if (checkUser && checkUser.coins !== undefined && checkUser.soles === undefined) {
+            await usersCollection.updateOne({ jid: sender }, { $set: { soles: checkUser.coins }, $unset: { coins: "" } });
+        }
+
         if (['work', 'w', 'daily'].includes(command)) {
             const limit = command === 'daily' ? 86400000 : 30000;
             const key = `${sender}-${command}`;
@@ -373,12 +401,14 @@ async function connectToWhatsApp() {
                 `👁️ *#perfil [@usuario]*\n   ↳ Muestra tu tarjeta de perfil.\n\n` +
                 `⏰ *#recordatorio o #recg [tiempo] [msj]*\n   ↳ Programa recordatorios.\n\n` +
                 `🎨 *#s / #gif / #toimg*\n   ↳ Crea y convierte stickers.\n\n` +
-                `📊 *#consumo / #topmsg / #lowmsg*\n   ↳ Recursos y rankings.\n\n` +
                 `💍 *#casarse [@usuario] / #aceptar*\n   ↳ Sistema de matrimonios.\n\n` +
-                `💔 *#divorcio [@usuario] [normal/juicio/encuesta]*\n   ↳ Sepárate en paz, en juicio o por votación grupal.\n\n` +
+                `💔 *#divorcio [@usuario] [normal/juicio/encuesta]*\n   ↳ Tipos de separación.\n\n` +
+                `⚖️ *#juicio [@usuario] [monto] [motivo]*\n   ↳ Demanda a alguien para quitarle soles.\n\n` +
                 `🎂 *#cumple DD/MM / #cumples*\n   ↳ Registra cumpleaños.\n\n` +
-                `🪙 *#bal / #work / #daily / #flip / #apostar / #ruleta / #slots*\n   ↳ Economía y juegos (en Soles).\n\n` +
-                `🛒 *#tienda / #comprar [item]*\n   ↳ Tienda exclusiva para gastar tus soles.`;
+                `🪙 *#bal / #work / #daily / #flip / #apostar / #ruleta / #slots*\n   ↳ Economía y juegos.\n\n` +
+                `💸 *#yapear [monto] [@usuario]*\n   ↳ Transfiere dinero a otra persona.\n\n` +
+                `🛒 *#tienda / #comprar [item]*\n   ↳ Tienda exclusiva para gastar tus soles.\n\n` +
+                `🔇 *#mutear [@us] [min] / #fianza*\n   ↳ Sistema de cárcel y fianzas (Solo Admins).`;
             return await sock.sendMessage(from, { text: menu }, { quoted: m });
         }
 
@@ -393,13 +423,93 @@ async function connectToWhatsApp() {
         }
 
         // ==========================================
-        // SISTEMA DE TIENDA Y SOLES
+        // SISTEMA DE JUICIOS / TRIBUNAL
         // ==========================================
+        if (command === 'juicio' || command === 'demandar') {
+            if (!from.endsWith('@g.us')) return await sock.sendMessage(from, { text: '⚠️ Los juicios solo proceden en grupos.' }, { quoted: m });
+            if (juiciosActivos.has(from)) return await sock.sendMessage(from, { text: '⚠️ Ya hay un juicio activo en este grupo.' }, { quoted: m });
+
+            const target = m.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0];
+            if (!target) return await sock.sendMessage(from, { text: '⚠️ Menciona al acusado. Ej: *#juicio @usuario 5000 por feo*' }, { quoted: m });
+            if (target === sender) return await sock.sendMessage(from, { text: '⚠️ No te puedes demandar a ti mismo.' }, { quoted: m });
+
+            const argsSinMencion = args.filter(a => !a.includes('@'));
+            const montoDemanda = parseInt(argsSinMencion[0]);
+            if (!montoDemanda || isNaN(montoDemanda) || montoDemanda <= 0) return await sock.sendMessage(from, { text: '⚠️ Indica un monto válido de indemnización. Ej: *#juicio @usuario 5000 motivo*' }, { quoted: m });
+
+            const motivo = argsSinMencion.slice(1).join(' ') || 'Sin motivo especificado';
+
+            juiciosActivos.set(from, {
+                demandante: sender,
+                demandado: target,
+                monto: montoDemanda,
+                votosSi: 0,
+                votosNo: 0,
+                votantes: new Set()
+            });
+
+            await sock.sendMessage(from, {
+                text: `⚖️ *TRIBUNAL DE COCOBOT* ⚖️\n\n🧑‍⚖️ *Demandante:* @${sender.split('@')[0]}\n🛑 *Acusado:* @${target.split('@')[0]}\n💸 *Indemnización Solicitada:* ${montoDemanda} soles\n📄 *Motivo:* "${motivo}"\n\n👨‍⚖️ *El jurado (ustedes) decide:*\n👉 Escriban *#culpable* para que pague la indemnización.\n👉 Escriban *#inocente* para absolverlo de los cargos.\n\n⏱️ El veredicto se dictará en 5 minutos.`,
+                mentions: [sender, target]
+            }, { quoted: m });
+
+            setTimeout(async () => {
+                const juicio = juiciosActivos.get(from);
+                if (!juicio) return;
+                juiciosActivos.delete(from);
+
+                if (juicio.votosSi > juicio.votosNo) {
+                    await usersCollection.updateOne({ jid: juicio.demandado }, { $inc: { soles: -juicio.monto } });
+                    await usersCollection.updateOne({ jid: juicio.demandante }, { $inc: { soles: juicio.monto } });
+                    await sock.sendMessage(from, { text: `⚖️ *VEREDICTO FINAL* ⚖️\n\nCon ${juicio.votosSi} votos a favor y ${juicio.votosNo} en contra, el jurado declara a @${juicio.demandado.split('@')[0]} *CULPABLE*.\n\n🔨 Deberá transferir *🪙 ${juicio.monto} soles* a @${juicio.demandante.split('@')[0]} como indemnización.`, mentions: [juicio.demandado, juicio.demandante] });
+                } else {
+                    await sock.sendMessage(from, { text: `⚖️ *VEREDICTO FINAL* ⚖️\n\nCon ${juicio.votosNo} votos por la inocencia y solo ${juicio.votosSi} por la culpabilidad, @${juicio.demandado.split('@')[0]} es declarado *INOCENTE*.\n\n🔨 Caso cerrado. No se pagará indemnización.`, mentions: [juicio.demandado] });
+                }
+            }, 300000); // 5 minutos
+            return;
+        }
+
+        if (command === 'culpable' || command === 'inocente') {
+            const juicio = juiciosActivos.get(from);
+            if (!juicio) return; // Si no hay juicio, no responde al comando
+            if (juicio.votantes.has(sender)) return await sock.sendMessage(from, { text: '⚠️ Ya emitiste tu voto como jurado.' }, { quoted: m });
+            
+            juicio.votantes.add(sender);
+            if (command === 'culpable') juicio.votosSi++;
+            if (command === 'inocente') juicio.votosNo++;
+            
+            return await sock.sendMessage(from, { text: `✅ Voto registrado. (Culpable: ${juicio.votosSi} | Inocente: ${juicio.votosNo})` }, { quoted: m });
+        }
+
+        // ==========================================
+        // SISTEMA DE TIENDA Y TRANSFERENCIAS
+        // ==========================================
+        if (command === 'yapear' || command === 'transferir') {
+            const montoTran = parseInt(args[0]);
+            const target = m.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0];
+
+            if (!montoTran || isNaN(montoTran) || montoTran <= 0) return await sock.sendMessage(from, { text: '⚠️ Indica un monto válido. Ej: *#yapear 1000 @usuario*' }, { quoted: m });
+            if (!target || target === sender) return await sock.sendMessage(from, { text: '⚠️ Menciona a otra persona para yapearle.' }, { quoted: m });
+
+            const uData = await usersCollection.findOne({ jid: sender });
+            const misSoles = uData?.soles || 0;
+
+            if (misSoles < montoTran) return await sock.sendMessage(from, { text: `❌ Saldo insuficiente. Tienes *🪙 ${misSoles} soles*.` }, { quoted: m });
+
+            await usersCollection.updateOne({ jid: sender }, { $inc: { soles: -montoTran } });
+            await usersCollection.updateOne({ jid: target }, { $inc: { soles: montoTran } }, { upsert: true });
+
+            const stickerYape = await obtenerGifAleatorio('money transfer pay', 'https://media.giphy.com/media/l0Ex6kAKAoFRsFh6M/giphy.gif');
+            await sock.sendMessage(from, { text: `💸 *¡YAPE EXITOSO!*\n\n@${sender.split('@')[0]} le transfirió *🪙 ${montoTran} soles* a @${target.split('@')[0]}.`, mentions: [sender, target] }, { quoted: m });
+            if (stickerYape) await sock.sendMessage(from, { sticker: stickerYape });
+            return;
+        }
+
         if (command === 'tienda') {
             const textoTienda = `🛒 *TIENDA COCOBOT* 🛒\n\n` +
-                `1️⃣ *Admin Temporal (24h)* - 50,000 soles\n` +
+                `1️⃣ *Admin Temporal (24h)* - 150,000 soles\n` +
                 `   ↳ _Uso: #comprar admin_\n\n` +
-                `2️⃣ *Silenciar Chat (10m)* - 20,000 soles\n` +
+                `2️⃣ *Silenciar Chat (10m)* - 80,000 soles\n` +
                 `   ↳ _Uso: #comprar silencio_\n\n` +
                 `💳 Consulta tu saldo con #bal`;
             return await sock.sendMessage(from, { text: textoTienda }, { quoted: m });
@@ -409,11 +519,11 @@ async function connectToWhatsApp() {
             if (!from.endsWith('@g.us')) return await sock.sendMessage(from, { text: '⚠️ La tienda solo funciona en grupos.' }, { quoted: m });
             
             const item = args[0]?.toLowerCase();
-            const userData = await usersCollection.findOne({ jid: sender });
-            const misSoles = userData?.soles || 0;
+            const uData = await usersCollection.findOne({ jid: sender });
+            const misSoles = uData?.soles || 0;
 
             if (item === 'admin') {
-                const costo = 50000;
+                const costo = 150000;
                 if (misSoles < costo) return await sock.sendMessage(from, { text: `❌ No tienes fondos suficientes. Cuesta ${costo} soles.` }, { quoted: m });
                 
                 await usersCollection.updateOne({ jid: sender }, { $inc: { soles: -costo } });
@@ -422,12 +532,12 @@ async function connectToWhatsApp() {
                 
                 setTimeout(async () => {
                     try { await sock.groupParticipantsUpdate(from, [sender], 'demote'); } catch {}
-                }, 86400000); // 24 horas
+                }, 86400000);
                 return;
             }
 
             if (item === 'silencio') {
-                const costo = 20000;
+                const costo = 80000;
                 if (misSoles < costo) return await sock.sendMessage(from, { text: `❌ No tienes fondos suficientes. Cuesta ${costo} soles.` }, { quoted: m });
                 
                 await usersCollection.updateOne({ jid: sender }, { $inc: { soles: -costo } });
@@ -439,11 +549,60 @@ async function connectToWhatsApp() {
                         await sock.groupSettingUpdate(from, 'not_announcement');
                         await sock.sendMessage(from, { text: `🔊 El tiempo de silencio terminó. ¡Ya pueden hablar!` });
                     } catch {}
-                }, 600000); // 10 minutos
+                }, 600000);
                 return;
             }
-
             return await sock.sendMessage(from, { text: '⚠️ Ítem no válido. Revisa las opciones con *#tienda*.' }, { quoted: m });
+        }
+
+        // ==========================================
+        // SISTEMA DE CÁRCEL Y FIANZA
+        // ==========================================
+        if (command === 'mutear' || command === 'mute') {
+            if (!from.endsWith('@g.us')) return await sock.sendMessage(from, { text: '⚠️ Solo grupos.' }, { quoted: m });
+            const meta = await sock.groupMetadata(from);
+            const admins = meta.participants.filter(p => p.admin !== null).map(p => p.id);
+            if (!admins.includes(sender) && !esOwner(sender)) return await sock.sendMessage(from, { text: '⚠️ Solo administradores pueden mutear.' }, { quoted: m });
+            
+            const target = m.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0];
+            const minutos = parseInt(args[1]) || 5; 
+            if (!target) return await sock.sendMessage(from, { text: '⚠️ Menciona a quién silenciar. Ej: #mutear @usuario 10' }, { quoted: m });
+            
+            const bailAmount = minutos * 10000; 
+            const expireTime = Date.now() + (minutos * 60000);
+            
+            mutedUsers.set(`${from}-${target}`, { expireTime, bailAmount, groupId: from });
+            return await sock.sendMessage(from, { text: `🔇 @${target.split('@')[0]} ha sido silenciado por ${minutos} minutos.\n\n💸 *Fianza:* ${bailAmount} soles.\n(Puede pagarla desde cualquier grupo usando #fianza)`, mentions: [target] }, { quoted: m });
+        }
+
+        if (command === 'fianza' || command === 'pagarfianza') {
+            let totalBail = 0;
+            let muteKeysToRemove = [];
+            
+            for (const [key, info] of mutedUsers.entries()) {
+                if (key.endsWith(`-${sender}`)) {
+                    if (Date.now() < info.expireTime) {
+                        totalBail += info.bailAmount;
+                        muteKeysToRemove.push(key);
+                    } else {
+                        mutedUsers.delete(key);
+                    }
+                }
+            }
+
+            if (muteKeysToRemove.length === 0) return await sock.sendMessage(from, { text: '✅ No tienes ninguna fianza pendiente ni estás silenciado.' }, { quoted: m });
+
+            const uData = await usersCollection.findOne({ jid: sender });
+            const misSoles = uData?.soles || 0;
+
+            if (misSoles < totalBail) {
+                return await sock.sendMessage(from, { text: `❌ No tienes fondos para pagar tu fianza. Cuesta *🪙 ${totalBail} soles* y tienes *🪙 ${misSoles} soles*.` }, { quoted: m });
+            }
+
+            await usersCollection.updateOne({ jid: sender }, { $inc: { soles: -totalBail } });
+            muteKeysToRemove.forEach(k => mutedUsers.delete(k));
+
+            return await sock.sendMessage(from, { text: `✅ Has pagado tu fianza de *🪙 ${totalBail} soles*.\n¡Ya puedes volver a hablar en los grupos donde estabas silenciado! 🎉` }, { quoted: m });
         }
 
         const accionesMap = {
@@ -641,11 +800,7 @@ async function connectToWhatsApp() {
             let textoOpciones = '';
             preguntaTrivia.opciones.forEach((op, idx) => { textoOpciones += `${letras[idx]}) ${op}\n`; });
 
-            triviaActiva.set(from, {
-                correctaIndex: preguntaTrivia.correcta,
-                letras,
-                expira: Date.now() + 30000
-            });
+            triviaActiva.set(from, { correctaIndex: preguntaTrivia.correcta, letras, expira: Date.now() + 30000 });
 
             setTimeout(() => {
                 const activa = triviaActiva.get(from);
@@ -681,17 +836,12 @@ async function connectToWhatsApp() {
         if (command === 'apostar' || command === 'apuesta') {
             const montoApuesta = parseInt(args[0]);
             const eleccion = args[1]?.toLowerCase();
-            if (!montoApuesta || isNaN(montoApuesta) || montoApuesta <= 0) {
-                return await sock.sendMessage(from, { text: '⚠️ Formato: *#apostar [monto] [cara/cruz]*' }, { quoted: m });
-            }
-            if (!['cara', 'cruz'].includes(eleccion)) {
-                return await sock.sendMessage(from, { text: '⚠️ Elige *cara* o *cruz*. Ej: *#apostar 100 cara*' }, { quoted: m });
-            }
-            const usuarioApuesta = await usersCollection.findOne({ jid: sender });
-            const saldoActual = usuarioApuesta?.soles || 0;
-            if (saldoActual < montoApuesta) {
-                return await sock.sendMessage(from, { text: `❌ No tienes suficientes soles. Tu saldo es *🪙 ${saldoActual}*.` }, { quoted: m });
-            }
+            if (!montoApuesta || isNaN(montoApuesta) || montoApuesta <= 0) return await sock.sendMessage(from, { text: '⚠️ Formato: *#apostar [monto] [cara/cruz]*' }, { quoted: m });
+            if (!['cara', 'cruz'].includes(eleccion)) return await sock.sendMessage(from, { text: '⚠️ Elige *cara* o *cruz*. Ej: *#apostar 100 cara*' }, { quoted: m });
+            
+            const uApuesta = await usersCollection.findOne({ jid: sender });
+            const saldoActual = uApuesta?.soles || 0;
+            if (saldoActual < montoApuesta) return await sock.sendMessage(from, { text: `❌ No tienes suficientes soles. Tu saldo es *🪙 ${saldoActual}*.` }, { quoted: m });
 
             const resultadoMoneda = Math.random() < 0.5 ? 'cara' : 'cruz';
             const gano = resultadoMoneda === eleccion;
@@ -707,14 +857,11 @@ async function connectToWhatsApp() {
         if (command === 'ruleta') {
             const montoRuleta = parseInt(args[0]);
             const colorElegido = args[1]?.toLowerCase();
-            if (!montoRuleta || isNaN(montoRuleta) || montoRuleta <= 0) {
-                return await sock.sendMessage(from, { text: '⚠️ Formato: *#ruleta [monto] [rojo/negro/verde]*' }, { quoted: m });
-            }
-            if (!['rojo', 'negro', 'verde'].includes(colorElegido)) {
-                return await sock.sendMessage(from, { text: '⚠️ Elige *rojo*, *negro* o *verde*. Ej: *#ruleta 100 rojo*' }, { quoted: m });
-            }
-            const usuarioRuleta = await usersCollection.findOne({ jid: sender });
-            const saldoRuleta = usuarioRuleta?.soles || 0;
+            if (!montoRuleta || isNaN(montoRuleta) || montoRuleta <= 0) return await sock.sendMessage(from, { text: '⚠️ Formato: *#ruleta [monto] [rojo/negro/verde]*' }, { quoted: m });
+            if (!['rojo', 'negro', 'verde'].includes(colorElegido)) return await sock.sendMessage(from, { text: '⚠️ Elige *rojo*, *negro* o *verde*.' }, { quoted: m });
+            
+            const uRuleta = await usersCollection.findOne({ jid: sender });
+            const saldoRuleta = uRuleta?.soles || 0;
             if (saldoRuleta < montoRuleta) return await sock.sendMessage(from, { text: `❌ No tienes suficientes soles.` }, { quoted: m });
 
             const numeroSalido = Math.floor(Math.random() * 37);
@@ -735,8 +882,9 @@ async function connectToWhatsApp() {
         if (command === 'slots' || command === 'tragamonedas') {
             const montoSlots = parseInt(args[0]);
             if (!montoSlots || isNaN(montoSlots) || montoSlots <= 0) return await sock.sendMessage(from, { text: '⚠️ Formato: *#slots [monto]*' }, { quoted: m });
-            const usuarioSlots = await usersCollection.findOne({ jid: sender });
-            const saldoSlots = usuarioSlots?.soles || 0;
+            
+            const uSlots = await usersCollection.findOne({ jid: sender });
+            const saldoSlots = uSlots?.soles || 0;
             if (saldoSlots < montoSlots) return await sock.sendMessage(from, { text: `❌ No tienes suficientes soles.` }, { quoted: m });
 
             const simbolos = ['🍒', '🍋', '🔔', '💎', '⭐'];
@@ -832,14 +980,14 @@ async function connectToWhatsApp() {
 
         if (command === 'perfil' || command === 'verperfil') {
             const target = m.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0] || m.message.extendedTextMessage?.contextInfo?.participant || sender;
-            const userData = await usersCollection.findOne({ jid: target }) || {};
+            const uData = await usersCollection.findOne({ jid: target }) || {};
             const statsData = from.endsWith('@g.us') ? (await groupStatsCollection.findOne({ jid: target, groupId: from }) || {}) : {};
             
-            let parejas = userData.pareja || [];
+            let parejas = uData.pareja || [];
             if (typeof parejas === 'string') parejas = [parejas];
             let nombrePareja = parejas.length > 0 ? parejas.map(p => `@${p.split('@')[0]} 💍`).join(', ') : 'Soltero/a 💔';
 
-            const redes = userData.redes || {};
+            const redes = uData.redes || {};
             let redesTxt = '';
             if (redes.facebook) redesTxt += `📘 *Facebook:* ${redes.facebook}\n`;
             if (redes.instagram) redesTxt += `📸 *Instagram:* ${redes.instagram}\n`;
@@ -850,20 +998,18 @@ async function connectToWhatsApp() {
             const perfilTxt = `👤 *PERFIL DE USUARIO* 👤\n` +
                 `────────────────────────\n` +
                 `📌 *Usuario:* @${target.split('@')[0]}\n` +
-                `🎂 *Edad:* ${userData.edad ? userData.edad + ' años' : 'No especificada'}\n` +
-                `⚧️ *Género:* ${userData.genero || 'No especificado'}\n` +
-                `💬 *Frase:* "${userData.frase || 'Sin frase'}"\n` +
+                `🎂 *Edad:* ${uData.edad ? uData.edad + ' años' : 'No especificada'}\n` +
+                `⚧️ *Género:* ${uData.genero || 'No especificado'}\n` +
+                `💬 *Frase:* "${uData.frase || 'Sin frase'}"\n` +
                 `💍 *Estado Civil:* ${nombrePareja}\n` +
-                `🎂 *Cumpleaños:* ${userData.cumple || 'No registrado'}\n` +
-                `🪙 *Soles:* ${userData.soles || 0}\n` +
+                `🎂 *Cumpleaños:* ${uData.cumple || 'No registrado'}\n` +
+                `🪙 *Soles:* ${uData.soles || 0}\n` +
                 `📊 *Mensajes:* ${statsData.messageCount || 0}\n` +
                 (redesTxt ? `\n🌐 *REDES SOCIALES:*\n${redesTxt}` : '');
 
             await sock.sendMessage(from, { text: perfilTxt, mentions: [target, ...parejas].filter(Boolean) }, { quoted: m });
-            if (userData.stickerBase64) {
-                try {
-                    await sock.sendMessage(from, { sticker: Buffer.from(userData.stickerBase64, 'base64') });
-                } catch {}
+            if (uData.stickerBase64) {
+                try { await sock.sendMessage(from, { sticker: Buffer.from(uData.stickerBase64, 'base64') }); } catch {}
             }
         }
 
@@ -981,8 +1127,8 @@ async function connectToWhatsApp() {
             const target = m.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0];
             if (!target || target === sender) return await sock.sendMessage(from, { text: '⚠️ Menciona a otra persona para casarte.' }, { quoted: m });
             
-            const userData = await usersCollection.findOne({ jid: sender });
-            const parejas = Array.isArray(userData?.pareja) ? userData.pareja : (userData?.pareja ? [userData.pareja] : []);
+            const uData = await usersCollection.findOne({ jid: sender });
+            const parejas = Array.isArray(uData?.pareja) ? uData.pareja : (uData?.pareja ? [uData.pareja] : []);
             
             if (parejas.includes(target)) return await sock.sendMessage(from, { text: '⚠️ Ya estás casado/a con esa persona.' }, { quoted: m });
 
@@ -1002,7 +1148,7 @@ async function connectToWhatsApp() {
         }
 
         // ==========================================
-        // DIVORCIO CON ENCUESTA
+        // DIVORCIO (NORMAL, JUICIO AZAR Y ENCUESTA)
         // ==========================================
         if (command === 'divorcio' || command === 'divorciarse') {
             const textoComando = args.join(' ').toLowerCase();
@@ -1010,47 +1156,45 @@ async function connectToWhatsApp() {
             const esEncuesta = textoComando.includes('encuesta');
             const target = m.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0];
 
-            const userData = await usersCollection.findOne({ jid: sender });
-            let parejas = userData?.pareja || [];
+            const uData = await usersCollection.findOne({ jid: sender });
+            let parejas = uData?.pareja || [];
             if (typeof parejas === 'string') parejas = [parejas];
 
-            if (parejas.length === 0) {
-                return await sock.sendMessage(from, { text: '⚠️ No estás casado/a con nadie actualmente. 💔' }, { quoted: m });
-            }
+            if (parejas.length === 0) return await sock.sendMessage(from, { text: '⚠️ No estás casado/a.' }, { quoted: m });
 
             let exPareja;
             if (parejas.length === 1) {
                 exPareja = parejas[0]; 
             } else {
-                if (!target) return await sock.sendMessage(from, { text: '⚠️ Estás casado/a con varias personas. Debes mencionar a quién divorciar. Ej: *#divorcio @usuario juicio*' }, { quoted: m });
+                if (!target) return await sock.sendMessage(from, { text: '⚠️ Estás casado/a con varias personas. Menciona a quién divorciar. Ej: *#divorcio @usuario juicio*' }, { quoted: m });
                 if (!parejas.includes(target)) return await sock.sendMessage(from, { text: '⚠️ No estás casado/a con esa persona.' }, { quoted: m });
                 exPareja = target;
             }
 
             if (esEncuesta) {
                 if (!from.endsWith('@g.us')) return await sock.sendMessage(from, { text: '⚠️ Las encuestas solo funcionan en grupos.' }, { quoted: m });
-                if (encuestasDivorcio.has(from)) return await sock.sendMessage(from, { text: '⚠️ Ya hay una encuesta de divorcio activa en este grupo.' }, { quoted: m });
+                if (encuestasDivorcio.has(from)) return await sock.sendMessage(from, { text: '⚠️ Ya hay una encuesta activa.' }, { quoted: m });
 
                 encuestasDivorcio.set(from, { demandante: sender, demandado: exPareja, votosSi: 0, votosNo: 0, votantes: new Set() });
 
                 await sock.sendMessage(from, { 
-                    text: `⚖️ *ENCUESTA DE DIVORCIO* ⚖️\n\n@${sender.split('@')[0]} pidió divorciarse de @${exPareja.split('@')[0]}.\n\nEl grupo decide su futuro:\n👉 Vota *#votesi* para separarlos.\n👉 Vota *#voteno* para mantenerlos juntos.\n\n⏱️ La votación se cierra en 10 minutos.`, 
+                    text: `⚖️ *ENCUESTA DE DIVORCIO* ⚖️\n\n@${sender.split('@')[0]} pidió divorciarse de @${exPareja.split('@')[0]}.\n\nEl grupo decide su futuro:\n👉 Vota *#votesi* para separarlos.\n👉 Vota *#voteno* para mantenerlos juntos.\n\n⏱️ Cierre en 10 minutos.`, 
                     mentions: [sender, exPareja] 
                 }, { quoted: m });
 
                 setTimeout(async () => {
                     const encuesta = encuestasDivorcio.get(from);
                     if (!encuesta) return;
-
                     encuestasDivorcio.delete(from);
+
                     if (encuesta.votosSi > encuesta.votosNo) {
                         await usersCollection.updateOne({ jid: sender }, { $pull: { pareja: exPareja } });
                         await usersCollection.updateOne({ jid: exPareja }, { $pull: { pareja: sender } });
-                        await sock.sendMessage(from, { text: `⚖️ *RESULTADOS*: ¡EL PUEBLO HABLÓ! (${encuesta.votosSi} a ${encuesta.votosNo})\nLa pareja conformada por @${sender.split('@')[0]} y @${exPareja.split('@')[0]} se ha divorciado oficialmente. 📝💔`, mentions: [sender, exPareja] });
+                        await sock.sendMessage(from, { text: `⚖️ *RESULTADOS*: ¡EL PUEBLO HABLÓ! (${encuesta.votosSi} a ${encuesta.votosNo})\nSe han divorciado oficialmente. 📝💔`, mentions: [sender, exPareja] });
                     } else {
-                        await sock.sendMessage(from, { text: `⚖️ *RESULTADOS*: ¡DIVORCIO DENEGADO! (${encuesta.votosSi} a ${encuesta.votosNo})\nTendrán que seguir casados y arreglar sus problemas. 💍🔒` });
+                        await sock.sendMessage(from, { text: `⚖️ *RESULTADOS*: ¡DIVORCIO DENEGADO! (${encuesta.votosSi} a ${encuesta.votosNo})\nTendrán que seguir casados. 💍🔒` });
                     }
-                }, 600000); // 10 minutos
+                }, 600000); 
                 return;
             }
 
@@ -1061,21 +1205,20 @@ async function connectToWhatsApp() {
 
             if (esJuicio) {
                 const pierdeDemandante = Math.random() < 0.5;
-
                 if (pierdeDemandante) {
-                    const mitadMias = Math.floor((userData.soles || 0) * 0.5);
+                    const mitadMias = Math.floor((uData.soles || 0) * 0.5);
                     if (mitadMias > 0) {
                         await usersCollection.updateOne({ jid: sender }, { $inc: { soles: -mitadMias } });
                         await usersCollection.updateOne({ jid: exPareja }, { $inc: { soles: mitadMias } });
                     }
-                    return await sock.sendMessage(from, { text: `⚖️ *JUICIO DE DIVORCIO PERDIDO* ⚖️\n\nEl juez falló a favor de @${exPareja.split('@')[0]}. Perdiste el 50% de tus bienes (🪙 ${mitadMias} soles) como pensión compensatoria. 📉💔`, mentions: [exPareja] }, { quoted: m });
+                    return await sock.sendMessage(from, { text: `⚖️ *JUICIO DE DIVORCIO PERDIDO* ⚖️\nEl juez falló a favor de @${exPareja.split('@')[0]}. Perdiste el 50% de tus bienes (🪙 ${mitadMias} soles) como pensión compensatoria. 📉💔`, mentions: [exPareja] }, { quoted: m });
                 } else {
                     const mitadDeEx = Math.floor((exData.soles || 0) * 0.5);
                     if (mitadDeEx > 0) {
                         await usersCollection.updateOne({ jid: exPareja }, { $inc: { soles: -mitadDeEx } });
                         await usersCollection.updateOne({ jid: sender }, { $inc: { soles: mitadDeEx } });
                     }
-                    return await sock.sendMessage(from, { text: `⚖️ *JUICIO DE DIVORCIO GANADO* ⚖️\n\n¡Ganaste el caso contra @${exPareja.split('@')[0]}! La corte te otorgó el 50% de sus bienes (🪙 ${mitadDeEx} soles). 🏛️🎉`, mentions: [exPareja] }, { quoted: m });
+                    return await sock.sendMessage(from, { text: `⚖️ *JUICIO DE DIVORCIO GANADO* ⚖️\n¡Ganaste el caso contra @${exPareja.split('@')[0]}! La corte te otorgó el 50% de sus bienes (🪙 ${mitadDeEx} soles). 🏛️🎉`, mentions: [exPareja] }, { quoted: m });
                 }
             }
 
@@ -1084,132 +1227,14 @@ async function connectToWhatsApp() {
 
         if (command === 'votesi' || command === 'voteno') {
             const encuesta = encuestasDivorcio.get(from);
-            if (!encuesta) return await sock.sendMessage(from, { text: '⚠️ No hay ninguna encuesta de divorcio activa en este momento.' }, { quoted: m });
-            
-            if (encuesta.votantes.has(sender)) return await sock.sendMessage(from, { text: '⚠️ Ya registramos tu voto para esta encuesta.' }, { quoted: m });
+            if (!encuesta) return await sock.sendMessage(from, { text: '⚠️ No hay ninguna encuesta activa.' }, { quoted: m });
+            if (encuesta.votantes.has(sender)) return await sock.sendMessage(from, { text: '⚠️ Ya registramos tu voto.' }, { quoted: m });
             
             encuesta.votantes.add(sender);
-            
             if (command === 'votesi') encuesta.votosSi++;
             if (command === 'voteno') encuesta.votosNo++;
             
             return await sock.sendMessage(from, { text: `✅ Voto registrado. (SI: ${encuesta.votosSi} | NO: ${encuesta.votosNo})` }, { quoted: m });
-        }
-
-        // ==========================================
-        // COMANDOS DE MEDIOS Y ADMIN
-        // ==========================================
-        if (command === 'ia' || command === 'gemini' || command === 'ai') {
-            const query = args.join(' ');
-            if (!query) return await sock.sendMessage(from, { text: '⚠️ Escribe algo para consultar a la IA.' }, { quoted: m });
-            try {
-                await sock.sendMessage(from, { text: '🤖 Pensando respuesta...' }, { quoted: m });
-                const res = await ai.models.generateContent({ model: 'gemini-3.6-flash', contents: query });
-                apiUsageStats.geminiRequests++;
-                if (res.usageMetadata) apiUsageStats.totalTokensUsed += res.usageMetadata.totalTokenCount || 0;
-                await sock.sendMessage(from, { text: `${res.text || 'Sin respuesta.'}` }, { quoted: m });
-            } catch { await sock.sendMessage(from, { text: '❌ Error al conectar con Gemini.' }, { quoted: m }); }
-        }
-
-        if (command === 'cumple' || command === 'cumpleaños') {
-            const fecha = args[0];
-            if (!/^([0-2][0-9]|3[0-1])\/(0[1-9]|1[0-2])$/.test(fecha)) return await sock.sendMessage(from, { text: '⚠️ Usa el formato *DD/MM*.' }, { quoted: m });
-            await usersCollection.updateOne({ jid: sender }, { $set: { cumple: fecha } }, { upsert: true });
-            return await sock.sendMessage(from, { text: `✅ Cumpleaños el *${fecha}* guardado.` }, { quoted: m });
-        }
-
-        if (command === 'cumples' || command === 'listarcumples') {
-            const all = await usersCollection.find({ cumple: { $exists: true } }).toArray();
-            if (all.length === 0) return await sock.sendMessage(from, { text: '📅 No hay cumpleaños.' }, { quoted: m });
-            all.sort((a, b) => calcularDiasFaltantes(a.cumple) - calcularDiasFaltantes(b.cumple));
-            let txt = '🎂 *PRÓXIMOS CUMPLEAÑOS* 🎂\n\n';
-            all.forEach((u, i) => {
-                const d = calcularDiasFaltantes(u.cumple);
-                txt += `${i + 1}. @${u.jid.split('@')[0]} ➡️ *${u.cumple}* ${d === 0 ? '🎉 *¡Es hoy!*' : `(Faltan ${d} days)`}\n`;
-            });
-            await sock.sendMessage(from, { text: txt, mentions: all.map(u => u.jid) }, { quoted: m });
-        }
-
-        if (command === 'flip' || command === 'coin') {
-            return await sock.sendMessage(from, { text: `El resultado es: ${Math.random() < 0.5 ? '🪙 *Cara* 🎉' : '🪙 *Cruz* 🦅'}` }, { quoted: m });
-        }
-
-        if (command === 'setwelcome' || command === 'setgoodbye') {
-            if (!from.endsWith('@g.us')) return await sock.sendMessage(from, { text: '⚠️ Solo en grupos.' }, { quoted: m });
-            const meta = await sock.groupMetadata(from);
-            const admins = meta.participants.filter(p => p.admin !== null).map(p => p.id);
-            if (!admins.includes(sender) && !esOwner(sender)) return await sock.sendMessage(from, { text: '⚠️ Solo administradores.' }, { quoted: m });
-            const text = args.join(' ');
-            if (!text) return await sock.sendMessage(from, { text: '⚠️ Escribe el mensaje.' }, { quoted: m });
-            await groupsCollection.updateOne({ groupId: from }, { $set: { [command === 'setwelcome' ? 'welcome' : 'goodbye']: text } }, { upsert: true });
-            return await sock.sendMessage(from, { text: '✅ Configuración actualizada con éxito.' }, { quoted: m });
-        }
-
-        if (command === 'untimeout' || command === 'quitarbanco') {
-            if (!from.endsWith('@g.us')) return;
-            const target = m.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0];
-            if (!target) return await sock.sendMessage(from, { text: '⚠️ Menciona al usuario.' }, { quoted: m });
-            if (stickerTimeouts.has(target)) {
-                stickerTimeouts.delete(target);
-                await sock.sendMessage(from, { text: `✅ Se retiró el timeout a @${target.split('@')[0]}.`, mentions: [target] }, { quoted: m });
-            } else { await sock.sendMessage(from, { text: 'ℹ️ El usuario no tiene timeout activo.' }, { quoted: m }); }
-        }
-
-        if (command === 's' || command === 'sticker') {
-            const q = m.message.extendedTextMessage?.contextInfo?.quotedMessage;
-            const isImage = messageType === 'imageMessage' || q?.imageMessage;
-            const isViewOnce = messageType === 'viewOnceMessage' || messageType === 'viewOnceMessageV2' || q?.viewOnceMessage || q?.viewOnceMessageV2;
-
-            if (!isImage && !isViewOnce) return await sock.sendMessage(from, { text: '⚠️ Envía o responde a una imagen.' }, { quoted: m });
-            try {
-                const targetMsg = q ? { message: q } : m;
-                const buf = await downloadMediaMessage(targetMsg, 'buffer', {}, { logger: pino({ level: 'silent' }) });
-                const resizedImageBuffer = await sharp(buf).resize(512, 512, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } }).png().toBuffer();
-                const sticker = new Sticker(resizedImageBuffer, { pack: '', author: '', type: StickerTypes.DEFAULT, quality: 80 });
-                await sock.sendMessage(from, { sticker: await sticker.toBuffer() }, { quoted: m });
-            } catch { await sock.sendMessage(from, { text: '❌ No se pudo procesar.' }, { quoted: m }); }
-        }
-
-        if (command === 'tovideo' || command === 'vidtosgif' || command === 'gif') {
-            const q = m.message.extendedTextMessage?.contextInfo?.quotedMessage;
-            if (!q?.videoMessage && !q?.documentMessage && messageType !== 'videoMessage') return await sock.sendMessage(from, { text: '⚠️ Adjunta un video/GIF.' }, { quoted: m });
-            try {
-                await sock.sendMessage(from, { text: '⏳ Procesando video a sticker...' }, { quoted: m });
-                const buf = await downloadMediaMessage(q ? { message: q } : m, 'buffer', {}, { logger: pino({ level: 'silent' }) });
-                if (buf.length > 8 * 1024 * 1024) return await sock.sendMessage(from, { text: '❌ El archivo pesa más de 8 MB.' }, { quoted: m });
-                const sticker = new Sticker(buf, { pack: '', author: '', type: StickerTypes.ANIMATED, quality: 50, fps: 15 });
-                await sock.sendMessage(from, { sticker: await sticker.toBuffer() }, { quoted: m });
-            } catch { await sock.sendMessage(from, { text: '❌ Error.' }, { quoted: m }); }
-        }
-
-        if (command === 'toimg' || command === 'img') {
-            const q = m.message.extendedTextMessage?.contextInfo?.quotedMessage;
-            if (messageType !== 'stickerMessage' && !q?.stickerMessage) return await sock.sendMessage(from, { text: '⚠️ Envía o responde a un sticker.' }, { quoted: m });
-            try {
-                const buf = await downloadMediaMessage(messageType === 'stickerMessage' ? m : { message: q }, 'buffer', {}, { logger: pino({ level: 'silent' }) });
-                const image = await sharp(buf).png().toBuffer();
-                await sock.sendMessage(from, { image, caption: '✨ Convertido a imagen.' }, { quoted: m });
-            } catch { await sock.sendMessage(from, { text: '❌ Error al convertir.' }, { quoted: m }); }
-        }
-
-        if (command === 'del' || command === 'delete') {
-            const info = m.message.extendedTextMessage?.contextInfo;
-            if (!info?.stanzaId) return await sock.sendMessage(from, { text: '⚠️ Responde al mensaje a eliminar.' }, { quoted: m });
-            try { await sock.sendMessage(from, { delete: { remoteJid: from, id: info.stanzaId, participant: info.participant || sender } }); } catch { await sock.sendMessage(from, { text: '❌ Asegúrate de que el bot sea administrador.' }, { quoted: m }); }
-        }
-
-        if (command === 'anuncio') {
-            if (!esOwner(sender)) return;
-            const text = args.join(' ');
-            if (!text) return await sock.sendMessage(from, { text: '⚠️ Escribe el texto del anuncio.' }, { quoted: m });
-            try {
-                let mentions = [];
-                if (from.endsWith('@g.us')) {
-                    const meta = await sock.groupMetadata(from);
-                    mentions = meta.participants.map(p => p.id);
-                }
-                await sock.sendMessage(from, { text: `📢 *ANUNCIO OFICIAL* 📢\n\n${text}`, mentions });
-            } catch { await sock.sendMessage(from, { text: '❌ Error al enviar anuncio.' }, { quoted: m }); }
         }
 
         if (command === 'bal' || command === 'balance') {
@@ -1225,7 +1250,14 @@ async function connectToWhatsApp() {
         if (command === 'work' || command === 'w') {
             const earned = Math.floor(Math.random() * 400) + 100;
             await usersCollection.updateOne({ jid: sender }, { $inc: { soles: earned } }, { upsert: true });
-            return await sock.sendMessage(from, { text: `💼 Ganaste *🪙 ${earned} soles*.` }, { quoted: m });
+            return await sock.sendMessage(from, { text: `💼 Trabajaste duro y ganaste *🪙 ${earned} soles*.` }, { quoted: m });
+        }
+
+        if (command === 'daily') {
+            const u = await usersCollection.findOne({ jid: sender });
+            if (u?.lastDaily && Date.now() - u.lastDaily < 86400000) return await sock.sendMessage(from, { text: '⏳ Ya reclamaste tu recompensa diaria.' }, { quoted: m });
+            await usersCollection.updateOne({ jid: sender }, { $inc: { soles: 2000 }, $set: { lastDaily: Date.now() } }, { upsert: true });
+            return await sock.sendMessage(from, { text: '🎉 ¡Reclamaste tu recompensa diaria de *🪙 2000 soles*!' }, { quoted: m });
         }
     });
 }
