@@ -14,10 +14,34 @@ const { GoogleGenAI } = require('@google/genai');
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 const PORT = process.env.PORT || 3000;
 
-// Servidor HTTP web para Render
+// Servidor HTTP web con un panel visual ultraligero y cero consumo extra
 const server = http.createServer((req, res) => {
-    res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('CocoBot 24/7 activo y blindado contra caídas!\n');
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end(`
+        <!DOCTYPE html>
+        <html lang="es">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>CocoBot - Status Dashboard</title>
+            <style>
+                body { background-color: #0f172a; color: #f8fafc; font-family: system-ui, -apple-system, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+                .card { background: #1e293b; padding: 2rem; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.3); text-align: center; max-width: 400px; width: 100%; border: 1px solid #334155; }
+                .status { display: inline-block; width: 10px; height: 10px; background-color: #22c55e; border-radius: 50%; margin-right: 6px; box-shadow: 0 0 8px #22c55e; }
+                h1 { font-size: 1.5rem; margin-bottom: 0.5rem; color: #38bdf8; }
+                p { color: #94a3b8; font-size: 0.9rem; }
+                .badge { background: #334155; color: #e2e8f0; padding: 4px 10px; border-radius: 20px; font-size: 0.75rem; font-weight: bold; display: inline-block; margin-top: 1rem; }
+            </style>
+        </head>
+        <body>
+            <div class="card">
+                <h1>🤖 CocoBot 24/7</h1>
+                <p><span class="status"></span>Sistema Operativo y Blindado</p>
+                <div class="badge">Render Cloud • Node.js Active</div>
+            </div>
+        </body>
+        </html>
+    `);
 });
 
 server.listen(PORT, () => {
