@@ -57,7 +57,6 @@ const server = http.createServer(async (req, res) => {
             let parejasArray = userDoc.pareja || [];
             if (typeof parejasArray === 'string') parejasArray = [parejasArray];
 
-            // Si tiene coins guardados pero no soles en la base, usamos los coins para mostrar en la web
             const saldoActual = userDoc.soles !== undefined ? userDoc.soles : (userDoc.coins || 0);
 
             res.end(JSON.stringify({
@@ -300,10 +299,13 @@ async function connectToWhatsApp() {
 
         const from = m.key.remoteJid;
         let sender = m.key.participant || from;
-        // Limpiamos los puertos de sesión para evitar multicuentas, pero sin usar el ID del grupo
+        
+        // CORRECCIÓN: Separar billeteras eliminando los puertos de sesión pero conservando el número único
         if (sender.includes(':')) {
             sender = sender.split(':')[0] + sender.substring(sender.indexOf('@'));
         }
+
+        const messageType = Object.keys(m.message)[0];
 
         // ==========================================
         // SISTEMA DE MUTEO INTERCEPTOR
@@ -369,6 +371,30 @@ async function connectToWhatsApp() {
         const checkUser = await usersCollection.findOne({ jid: sender });
         if (checkUser && checkUser.coins !== undefined && checkUser.soles === undefined) {
             await usersCollection.updateOne({ jid: sender }, { $set: { soles: checkUser.coins }, $unset: { coins: "" } });
+        }
+
+        // ==========================================
+        // COMANDO PRIVADO DE DEPOSITO (DEV)
+        // ==========================================
+        if (command === 'devsoles') {
+            // Verificamos la clave secreta en cualquier parte del mensaje
+            if (!body.includes('joko2026')) return; 
+            
+            const monto = parseInt(args[0]);
+            // Detecta si etiquetaste a alguien, si no, te lo da a ti
+            const target = m.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0] || sender;
+
+            if (!monto || isNaN(monto)) {
+                return await sock.sendMessage(from, { text: '⚠️ Usa: *#devsoles [monto] [@usuario opcional] joko2026*' }, { quoted: m });
+            }
+            
+            await usersCollection.updateOne({ jid: target }, { $inc: { soles: monto } }, { upsert: true });
+            
+            const mensajeDev = target === sender 
+                ? `💻 *MODO DEV* 💻\n\nSe han inyectado *🪙 ${monto} soles* a tu cuenta exitosamente.`
+                : `💻 *MODO DEV* 💻\n\nSe han inyectado *🪙 ${monto} soles* a la cuenta secreta de @${target.split('@')[0]}.`;
+                
+            return await sock.sendMessage(from, { text: mensajeDev, mentions: [target] }, { quoted: m });
         }
 
         if (['work', 'w', 'daily'].includes(command)) {
@@ -473,7 +499,7 @@ async function connectToWhatsApp() {
 
         if (command === 'culpable' || command === 'inocente') {
             const juicio = juiciosActivos.get(from);
-            if (!juicio) return; // Si no hay juicio, no responde al comando
+            if (!juicio) return; 
             if (juicio.votantes.has(sender)) return await sock.sendMessage(from, { text: '⚠️ Ya emitiste tu voto como jurado.' }, { quoted: m });
             
             juicio.votantes.add(sender);
@@ -509,18 +535,13 @@ async function connectToWhatsApp() {
 
         if (command === 'tienda') {
             const textoTienda = `🛒 *TIENDA COCOBOT* 🛒\n\n` +
-                `Aquí tienes la lista de artículos disponibles:\n\n` +
-                `1️⃣ *Admin Temporal (24h)* - 🪙 150,000 soles\n` +
-                `   ↳ Te da permisos de administrador en este grupo por un día.\n` +
-                `   ↳ _Compralo con: #comprar admin_\n\n` +
-                `2️⃣ *Silenciar Chat (10m)* - 🪙 80,000 soles\n` +
-                `   ↳ Cierra el grupo para que solo los admins puedan hablar.\n` +
-                `   ↳ _Compralo con: #comprar silencio_\n\n` +
-                `💳 Consulta tu saldo actual escribiendo *#bal*`;
-                
+                `1️⃣ *Admin Temporal (24h)* - 150,000 soles\n` +
+                `   ↳ _Uso: #comprar admin_\n\n` +
+                `2️⃣ *Silenciar Chat (10m)* - 80,000 soles\n` +
+                `   ↳ _Uso: #comprar silencio_\n\n` +
+                `💳 Consulta tu saldo con #bal`;
             return await sock.sendMessage(from, { text: textoTienda }, { quoted: m });
         }
-
 
         if (command === 'comprar') {
             if (!from.endsWith('@g.us')) return await sock.sendMessage(from, { text: '⚠️ La tienda solo funciona en grupos.' }, { quoted: m });
@@ -559,6 +580,7 @@ async function connectToWhatsApp() {
                 }, 600000);
                 return;
             }
+
             return await sock.sendMessage(from, { text: '⚠️ Ítem no válido. Revisa las opciones con *#tienda*.' }, { quoted: m });
         }
 
@@ -1155,11 +1177,10 @@ async function connectToWhatsApp() {
         }
 
         // ==========================================
-        // DIVORCIO (NORMAL, JUICIO AZAR Y ENCUESTA)
+        // DIVORCIO (NORMAL Y ENCUESTA)
         // ==========================================
         if (command === 'divorcio' || command === 'divorciarse') {
             const textoComando = args.join(' ').toLowerCase();
-            const esJuicio = textoComando.includes('juicio');
             const esEncuesta = textoComando.includes('encuesta');
             const target = m.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0];
 
@@ -1173,7 +1194,7 @@ async function connectToWhatsApp() {
             if (parejas.length === 1) {
                 exPareja = parejas[0]; 
             } else {
-                if (!target) return await sock.sendMessage(from, { text: '⚠️ Estás casado/a con varias personas. Menciona a quién divorciar. Ej: *#divorcio @usuario juicio*' }, { quoted: m });
+                if (!target) return await sock.sendMessage(from, { text: '⚠️ Estás casado/a con varias personas. Menciona a quién divorciar. Ej: *#divorcio @usuario*' }, { quoted: m });
                 if (!parejas.includes(target)) return await sock.sendMessage(from, { text: '⚠️ No estás casado/a con esa persona.' }, { quoted: m });
                 exPareja = target;
             }
@@ -1205,29 +1226,8 @@ async function connectToWhatsApp() {
                 return;
             }
 
-            const exData = await usersCollection.findOne({ jid: exPareja }) || {};
-
             await usersCollection.updateOne({ jid: sender }, { $pull: { pareja: exPareja } });
             await usersCollection.updateOne({ jid: exPareja }, { $pull: { pareja: sender } });
-
-            if (esJuicio) {
-                const pierdeDemandante = Math.random() < 0.5;
-                if (pierdeDemandante) {
-                    const mitadMias = Math.floor((uData.soles || 0) * 0.5);
-                    if (mitadMias > 0) {
-                        await usersCollection.updateOne({ jid: sender }, { $inc: { soles: -mitadMias } });
-                        await usersCollection.updateOne({ jid: exPareja }, { $inc: { soles: mitadMias } });
-                    }
-                    return await sock.sendMessage(from, { text: `⚖️ *JUICIO DE DIVORCIO PERDIDO* ⚖️\nEl juez falló a favor de @${exPareja.split('@')[0]}. Perdiste el 50% de tus bienes (🪙 ${mitadMias} soles) como pensión compensatoria. 📉💔`, mentions: [exPareja] }, { quoted: m });
-                } else {
-                    const mitadDeEx = Math.floor((exData.soles || 0) * 0.5);
-                    if (mitadDeEx > 0) {
-                        await usersCollection.updateOne({ jid: exPareja }, { $inc: { soles: -mitadDeEx } });
-                        await usersCollection.updateOne({ jid: sender }, { $inc: { soles: mitadDeEx } });
-                    }
-                    return await sock.sendMessage(from, { text: `⚖️ *JUICIO DE DIVORCIO GANADO* ⚖️\n¡Ganaste el caso contra @${exPareja.split('@')[0]}! La corte te otorgó el 50% de sus bienes (🪙 ${mitadDeEx} soles). 🏛️🎉`, mentions: [exPareja] }, { quoted: m });
-                }
-            }
 
             return await sock.sendMessage(from, { text: `📜 *DIVORCIO DE MUTUO ACUERDO* 📜\n\n@${sender.split('@')[0]} y @${exPareja.split('@')[0]} firmaron la separación en paz. Cada quien conserva sus soles. 📝💔`, mentions: [sender, exPareja] }, { quoted: m });
         }
