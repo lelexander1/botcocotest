@@ -507,13 +507,18 @@ async function connectToWhatsApp() {
 
         if (command === 'tienda') {
             const textoTienda = `🛒 *TIENDA COCOBOT* 🛒\n\n` +
-                `1️⃣ *Admin Temporal (24h)* - 150,000 soles\n` +
-                `   ↳ _Uso: #comprar admin_\n\n` +
-                `2️⃣ *Silenciar Chat (10m)* - 80,000 soles\n` +
-                `   ↳ _Uso: #comprar silencio_\n\n` +
-                `💳 Consulta tu saldo con #bal`;
+                `Aquí tienes la lista de artículos disponibles:\n\n` +
+                `1️⃣ *Admin Temporal (24h)* - 🪙 150,000 soles\n` +
+                `   ↳ Te da permisos de administrador en este grupo por un día.\n` +
+                `   ↳ _Compralo con: #comprar admin_\n\n` +
+                `2️⃣ *Silenciar Chat (10m)* - 🪙 80,000 soles\n` +
+                `   ↳ Cierra el grupo para que solo los admins puedan hablar.\n` +
+                `   ↳ _Compralo con: #comprar silencio_\n\n` +
+                `💳 Consulta tu saldo actual escribiendo *#bal*`;
+                
             return await sock.sendMessage(from, { text: textoTienda }, { quoted: m });
         }
+
 
         if (command === 'comprar') {
             if (!from.endsWith('@g.us')) return await sock.sendMessage(from, { text: '⚠️ La tienda solo funciona en grupos.' }, { quoted: m });
