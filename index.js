@@ -335,7 +335,7 @@ async function connectToWhatsApp() {
                 `📢 *#recordatorio-grupo o #recg [tiempo/fecha] [mensaje]*\n   ↳ Programa un recordatorio grupal.\n\n` +
                 `📋 *#misrecordatorios / #borrarrec [id]*\n   ↳ Administra tus recordatorios pendientes.\n\n` +
                 `🎨 *#s / #gif / #toimg*\n   ↳ Crea stickers limpios, videos animados o pasa stickers a foto.\n\n` +
-                `🥷 *#kill [@usuario]*\n   ↳ Expulsa a un usuario con un GIF (Solo Admins).\n\n` +
+                `✨ *ACCIONES Y REACCIONES (#hug, #dance, #slap, #angry, etc.)*\n   ↳ Interactúa con otros miembros usando animaciones temáticas.\n\n` +
                 `📊 *#consumo / #topmsg / #lowmsg*\n   ↳ Muestra recursos y rankings de mensajes por grupo.\n\n` +
                 `⚧️ *#genero [texto]*\n   ↳ Actualiza tu género libremente.\n\n` +
                 `💍 *#casarse [@usuario] / #aceptar*\n   ↳ Propón matrimonio y cásate.\n\n` +
@@ -358,6 +358,105 @@ async function connectToWhatsApp() {
                 return await sock.sendMessage(from, { text: `${res.text || '¡No!'}` }, { quoted: m });
             } catch {
                 return await sock.sendMessage(from, { text: '❌ ¡No!' }, { quoted: m });
+            }
+        }
+
+        // --- MAPA DE ACCIONES Y REACCIONES INTERACTIVAS ---
+        const accionesMap = {
+            angry: { query: 'anime angry mad', action: 'está enojado/a 💢' },
+            enojado: { query: 'anime angry mad', action: 'está enojado/a 💢' },
+            bath: { query: 'anime bath chill', action: 'se fue a bañar 🛁' },
+            bite: { query: 'anime bite', action: 'le dio un mordisco a' },
+            bleh: { query: 'anime bleh tongue', action: 'saca la lengua 😛' },
+            blush: { query: 'anime blush shy', action: 'se ha sonrojado 😳' },
+            bored: { query: 'anime bored yawn', action: 'está aburrido/a 🥱' },
+            aburrido: { query: 'anime bored yawn', action: 'está aburrido/a 🥱' },
+            call: { query: 'anime phone call', action: 'está llamando a' },
+            clap: { query: 'anime clap applause', action: 'está aplaudiendo 👏' },
+            aplaudir: { query: 'anime clap applause', action: 'está aplaudiendo 👏' },
+            coffee: { query: 'anime drinking coffee', action: 'está tomando un café ☕' },
+            cafe: { query: 'anime drinking coffee', action: 'está tomando un café ☕' },
+            cold: { query: 'anime cold shivering', action: 'tiene mucho frío 🥶' },
+            cook: { query: 'anime cooking delicious', action: 'está cocinando algo delicioso 🍳' },
+            cry: { query: 'anime crying tears', action: 'se puso a llorar 😭' },
+            cuddle: { query: 'anime cuddle cute', action: 'se está acurrucando con' },
+            dance: { query: 'anime dancing happy', action: 'se sacó los pasitos prohibidos 💃' },
+            dramatic: { query: 'anime dramatic shock', action: 'está haciendo un drama total 🎭' },
+            drama: { query: 'anime dramatic shock', action: 'está haciendo un drama total 🎭' },
+            draw: { query: 'anime drawing art', action: 'se puso a dibujar 🎨' },
+            drunk: { query: 'anime drunk dizzy', action: 'anda medio borracho/a 🍻' },
+            eat: { query: 'anime eating food', action: 'está comiendo algo delicioso 🍜' },
+            comer: { query: 'anime eating food', action: 'está comiendo algo delicioso 🍜' },
+            facepalm: { query: 'anime facepalm', action: 'se dio una palmada en la cara 🤦' },
+            gaming: { query: 'anime gaming gamer', action: 'se puso a jugar videojuegos 🎮' },
+            greet: { query: 'anime waving hello hi', action: 'saluda alegremente a' },
+            hi: { query: 'anime waving hello hi', action: 'saluda alegremente a' },
+            happy: { query: 'anime happy jump joy', action: 'salta de felicidad 🎉' },
+            feliz: { query: 'anime happy jump joy', action: 'salta de felicidad 🎉' },
+            heat: { query: 'anime hot sweat summer', action: 'se está muriendo de calor 🥵' },
+            hug: { query: 'anime hug warm', action: 'le dio un abrazo cálido a 🫂' },
+            impregnate: { query: 'anime shock stare', action: 'dejó pensando seriamente a' },
+            preg: { query: 'anime shock stare', action: 'dejó pensando seriamente a' },
+            preñar: { query: 'anime shock stare', action: 'dejó pensando seriamente a' },
+            jump: { query: 'anime jumping excited', action: 'está saltando de la emoción 🦘' },
+            kill: { query: 'anime punch fight weapon', action: 'saca su arma y ataca a 🔪' },
+            kiss: { query: 'anime kiss love', action: 'le dio un tierno beso a 💋' },
+            muak: { query: 'anime kiss love', action: 'le dio un tierno beso a 💋' },
+            kisscheek: { query: 'anime cheek kiss cute', action: 'le dio un beso en la mejilla a 😊' },
+            beso: { query: 'anime cheek kiss cute', action: 'le dio un beso en la mejilla a 😊' },
+            laugh: { query: 'anime laughing lol', action: 'se está reír y reír de' },
+            lewd: { query: 'anime smug cheeky', action: 'tiene una mirada bastante traviesa 😏' },
+            lick: { query: 'anime lick taste', action: 'le dio una lamida a 👅' },
+            love: { query: 'anime in love hearts', action: 'se siente completamente enamorado/a ❤️' },
+            amor: { query: 'anime in love hearts', action: 'se siente completamente enamorado/a ❤️' },
+            nope: { query: 'anime nope deny headshake', action: 'se niega rotundamente a hacerlo 🙅' },
+            pat: { query: 'anime headpat cute', action: 'le acaricia la cabeza suavemente a 🤲' },
+            poke: { query: 'anime poke cheek', action: 'le está picando las costillas a 👉' },
+            pout: { query: 'anime pout angry cute', action: 'está haciendo un puchero 😒' },
+            psycho: { query: 'anime creepy yandere smile', action: 'tiene una sonrisa bastante psicópata 👁️👄👁️' },
+            punch: { query: 'anime punch hit', action: 'le dio un fuerte puñetazo a 👊' },
+            push: { query: 'anime push away', action: 'empujó lejos a' },
+            run: { query: 'anime running fast escape', action: 'salió corriendo a toda velocidad 🏃' },
+            sad: { query: 'anime sad depression', action: 'expresa mucha tristeza 🥀' },
+            triste: { query: 'anime sad depression', action: 'expresa mucha tristeza 🥀' },
+            scared: { query: 'anime scared shock fear', action: 'está temblando de miedo 😱' },
+            scream: { query: 'anime screaming loud', action: 'soltó un grito al aire 🗣️' },
+            seduce: { query: 'anime seduce wink charm', action: 'intentó seducir a' },
+            shy: { query: 'anime shy nervous', action: 'siente muchísima timidez 🙈' },
+            timido: { query: 'anime shy nervous', action: 'siente muchísima timidez 🙈' },
+            sing: { query: 'anime singing microphone', action: 'se puso a cantar a pulmón herido 🎤' },
+            slap: { query: 'anime slap angry', action: 'le dio una tremenda bofetada a 👋' },
+            sleep: { query: 'anime sleeping tired zzz', action: 'se tumbó a dormir profundamente 💤' },
+            smoke: { query: 'anime smoking chill', action: 'está fumando pensativamente 🚬' },
+            spit: { query: 'anime spit disgust', action: 'escupió asqueado/a 💦' },
+            escupir: { query: 'anime disgust spit', action: 'escupió asqueado/a 💦' },
+            step: { query: 'anime step down', action: 'le pisó el pie a' },
+            pisar: { query: 'anime step down', action: 'le pisó el pie a' },
+            think: { query: 'anime thinking smart', action: 'se quedó pensando profundamente 🤔' },
+            tickle: { query: 'anime tickle laugh', action: 'le está haciendo cosquillas sin parar a 🤲' },
+            walk: { query: 'anime walking stroll', action: 'se fue a dar un paseo caminando 🚶' }
+        };
+
+        if (accionesMap[command]) {
+            const config = accionesMap[command];
+            const target = m.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0];
+            
+            let caption;
+            let mentions = [sender];
+
+            if (target) {
+                caption = `@${sender.split('@')[0]} ${config.action} @${target.split('@')[0]}! ✨`;
+                mentions.push(target);
+            } else {
+                caption = `@${sender.split('@')[0]} ${config.action} ✨`;
+            }
+
+            const backupDefault = 'https://media.giphy.com/media/l1J9EdzfOSgfyfeLm/giphy.gif';
+            const sticker = await obtenerGifAleatorio(config.query, backupDefault);
+            
+            if (sticker) {
+                await sock.sendMessage(from, { text: caption, mentions }, { quoted: m });
+                return await sock.sendMessage(from, { sticker });
             }
         }
 
@@ -1122,17 +1221,6 @@ async function connectToWhatsApp() {
             if (u?.lastDaily && Date.now() - u.lastDaily < 86400000) return await sock.sendMessage(from, { text: '⏳ Ya reclamaste tu diario hoy.' }, { quoted: m });
             await usersCollection.updateOne({ jid: sender }, { $inc: { coins: 2000 }, $set: { lastDaily: Date.now() } }, { upsert: true });
             return await sock.sendMessage(from, { text: '🎉 ¡Reclamaste *🪙 2000 coins*!' }, { quoted: m });
-        }
-
-        if (['hug', 'kiss', 'slap'].includes(command)) {
-            const target = m.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0];
-            if (!target) return await sock.sendMessage(from, { text: '⚠️ Menciona a alguien.' }, { quoted: m });
-            const backups = { hug: 'https://media.giphy.com/media/od5H3PmEG5EVq/giphy.gif', kiss: 'https://media.giphy.com/media/G3va31oEEnIkM/giphy.gif', slap: 'https://media.giphy.com/media/Gf3AUz3eBNbTW/giphy.gif' };
-            const actions = { hug: 'un abrazo 🫂', kiss: 'un beso 💋', slap: 'una bofetada 👋' };
-            const sticker = await obtenerGifAleatorio(command, backups[command]);
-            const caption = `@${sender.split('@')[0]} le dio ${actions[command]} @${target.split('@')[0]}! ✨`;
-            await sock.sendMessage(from, { text: caption, mentions: [sender, target] }, { quoted: m });
-            if (sticker) await sock.sendMessage(from, { sticker });
         }
     });
 }
