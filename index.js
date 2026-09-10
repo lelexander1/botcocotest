@@ -43,9 +43,11 @@ const server = http.createServer(async (req, res) => {
             const dbClient = new MongoClient(process.env.MONGODB_URI);
             await dbClient.connect();
             
-            // Búsqueda flexible por coincidencia de texto en el JID
+            // Regex flexible: busca los dígitos seguidos opcionalmente por :dispositivo y @s.whatsapp.net
+            const regexFlexible = new RegExp(`^${queryUser}(:\\d+)?@s\\.whatsapp\\.net$|^${queryUser}$`, 'i');
+            
             const userDoc = await dbClient.db('whatsapp_bot').collection('users').findOne({ 
-                jid: { $regex: queryUser, $options: 'i' } 
+                jid: { $regex: regexFlexible } 
             });
             
             await dbClient.close();
@@ -58,13 +60,13 @@ const server = http.createServer(async (req, res) => {
 
             console.log(`✅ Web API - Perfil encontrado para: ${userDoc.jid}`);
             res.end(JSON.stringify({
-                jid: userDoc.jid ? userDoc.jid.split('@')[0] : 'Desconocido',
+                jid: userDoc.jid ? userDoc.jid.split('@')[0].split(':')[0] : 'Desconocido',
                 coins: userDoc.coins || 0,
                 edad: userDoc.edad || 'No especificada',
                 frase: userDoc.frase || 'Sin frase',
                 genero: userDoc.genero || 'No especificado',
                 cumple: userDoc.cumple || 'No registrado',
-                pareja: userDoc.pareja ? userDoc.pareja.split('@')[0] : 'Soltero/a 💔',
+                pareja: userDoc.pareja ? userDoc.pareja.split('@')[0].split(':')[0] : 'Soltero/a 💔',
                 redes: userDoc.redes || {}
             }));
         } catch (e) {
