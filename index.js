@@ -47,20 +47,24 @@ const server = http.createServer(async (req, res) => {
                     { jid: { $regex: `${queryUser}@s.whatsapp.net`, $options: 'i' } }
                 ]
             });
+            
             await dbClient.close();
 
             if (!userDoc) {
                 return res.end(JSON.stringify({ error: 'No se encontró un perfil registrado con ese número' }));
             }
 
+            let parejasArray = userDoc.pareja || [];
+            if (typeof parejasArray === 'string') parejasArray = [parejasArray];
+
             res.end(JSON.stringify({
                 jid: userDoc.jid ? userDoc.jid.split('@')[0].split(':')[0] : 'Desconocido',
-                coins: userDoc.coins || 0,
+                soles: userDoc.soles || 0,
                 edad: userDoc.edad || 'No especificada',
                 frase: userDoc.frase || 'Sin frase',
                 genero: userDoc.genero || 'No especificado',
                 cumple: userDoc.cumple || 'No registrado',
-                pareja: userDoc.pareja ? userDoc.pareja.split('@')[0].split(':')[0] : 'Soltero/a 💔',
+                pareja: parejasArray.length > 0 ? parejasArray.map(p => p.split('@')[0].split(':')[0]).join(', ') : 'Soltero/a 💔',
                 redes: userDoc.redes || {}
             }));
         } catch (e) {
@@ -89,6 +93,7 @@ const cooldowns = new Map();
 const stickerSpamTracker = new Map(); 
 const stickerTimeouts = new Map();     
 const propuestasMatrimonio = new Map(); 
+const encuestasDivorcio = new Map(); 
 const triviaActiva = new Map(); 
 
 const apiUsageStats = {
@@ -369,9 +374,11 @@ async function connectToWhatsApp() {
                 `⏰ *#recordatorio o #recg [tiempo] [msj]*\n   ↳ Programa recordatorios.\n\n` +
                 `🎨 *#s / #gif / #toimg*\n   ↳ Crea y convierte stickers.\n\n` +
                 `📊 *#consumo / #topmsg / #lowmsg*\n   ↳ Recursos y rankings.\n\n` +
-                `💍 *#casarse [@usuario] / #aceptar / #divorcio [normal/juicio]*\n   ↳ Sistema de matrimonios.\n\n` +
+                `💍 *#casarse [@usuario] / #aceptar*\n   ↳ Sistema de matrimonios.\n\n` +
+                `💔 *#divorcio [@usuario] [normal/juicio/encuesta]*\n   ↳ Sepárate en paz, en juicio o por votación grupal.\n\n` +
                 `🎂 *#cumple DD/MM / #cumples*\n   ↳ Registra cumpleaños.\n\n` +
-                `🪙 *#bal / #work / #daily / #flip / #apostar / #ruleta / #slots*\n   ↳ Economía y juegos.`;
+                `🪙 *#bal / #work / #daily / #flip / #apostar / #ruleta / #slots*\n   ↳ Economía y juegos (en Soles).\n\n` +
+                `🛒 *#tienda / #comprar [item]*\n   ↳ Tienda exclusiva para gastar tus soles.`;
             return await sock.sendMessage(from, { text: menu }, { quoted: m });
         }
 
@@ -383,6 +390,60 @@ async function connectToWhatsApp() {
             } catch {
                 return await sock.sendMessage(from, { text: '❌ ¡No!' }, { quoted: m });
             }
+        }
+
+        // ==========================================
+        // SISTEMA DE TIENDA Y SOLES
+        // ==========================================
+        if (command === 'tienda') {
+            const textoTienda = `🛒 *TIENDA COCOBOT* 🛒\n\n` +
+                `1️⃣ *Admin Temporal (24h)* - 50,000 soles\n` +
+                `   ↳ _Uso: #comprar admin_\n\n` +
+                `2️⃣ *Silenciar Chat (10m)* - 20,000 soles\n` +
+                `   ↳ _Uso: #comprar silencio_\n\n` +
+                `💳 Consulta tu saldo con #bal`;
+            return await sock.sendMessage(from, { text: textoTienda }, { quoted: m });
+        }
+
+        if (command === 'comprar') {
+            if (!from.endsWith('@g.us')) return await sock.sendMessage(from, { text: '⚠️ La tienda solo funciona en grupos.' }, { quoted: m });
+            
+            const item = args[0]?.toLowerCase();
+            const userData = await usersCollection.findOne({ jid: sender });
+            const misSoles = userData?.soles || 0;
+
+            if (item === 'admin') {
+                const costo = 50000;
+                if (misSoles < costo) return await sock.sendMessage(from, { text: `❌ No tienes fondos suficientes. Cuesta ${costo} soles.` }, { quoted: m });
+                
+                await usersCollection.updateOne({ jid: sender }, { $inc: { soles: -costo } });
+                await sock.groupParticipantsUpdate(from, [sender], 'promote');
+                await sock.sendMessage(from, { text: `✅ ¡@${sender.split('@')[0]} compró ADMIN por 24 horas! 🛡️`, mentions: [sender] }, { quoted: m });
+                
+                setTimeout(async () => {
+                    try { await sock.groupParticipantsUpdate(from, [sender], 'demote'); } catch {}
+                }, 86400000); // 24 horas
+                return;
+            }
+
+            if (item === 'silencio') {
+                const costo = 20000;
+                if (misSoles < costo) return await sock.sendMessage(from, { text: `❌ No tienes fondos suficientes. Cuesta ${costo} soles.` }, { quoted: m });
+                
+                await usersCollection.updateOne({ jid: sender }, { $inc: { soles: -costo } });
+                await sock.groupSettingUpdate(from, 'announcement');
+                await sock.sendMessage(from, { text: `🤫 @${sender.split('@')[0]} compró SILENCIO. El chat se cerró por 10 minutos.`, mentions: [sender] }, { quoted: m });
+                
+                setTimeout(async () => {
+                    try {
+                        await sock.groupSettingUpdate(from, 'not_announcement');
+                        await sock.sendMessage(from, { text: `🔊 El tiempo de silencio terminó. ¡Ya pueden hablar!` });
+                    } catch {}
+                }, 600000); // 10 minutos
+                return;
+            }
+
+            return await sock.sendMessage(from, { text: '⚠️ Ítem no válido. Revisa las opciones con *#tienda*.' }, { quoted: m });
         }
 
         const accionesMap = {
@@ -610,8 +671,8 @@ async function connectToWhatsApp() {
             triviaActiva.delete(from);
             if (idxRespuesta === activa.correctaIndex) {
                 const premio = 150;
-                await usersCollection.updateOne({ jid: sender }, { $inc: { coins: premio } }, { upsert: true });
-                return await sock.sendMessage(from, { text: `✅ ¡Correcto! Ganaste *🪙 ${premio} coins*.` }, { quoted: m });
+                await usersCollection.updateOne({ jid: sender }, { $inc: { soles: premio } }, { upsert: true });
+                return await sock.sendMessage(from, { text: `✅ ¡Correcto! Ganaste *🪙 ${premio} soles*.` }, { quoted: m });
             } else {
                 return await sock.sendMessage(from, { text: `❌ Incorrecto. La respuesta correcta era *${activa.letras[activa.correctaIndex]}*.` }, { quoted: m });
             }
@@ -627,19 +688,19 @@ async function connectToWhatsApp() {
                 return await sock.sendMessage(from, { text: '⚠️ Elige *cara* o *cruz*. Ej: *#apostar 100 cara*' }, { quoted: m });
             }
             const usuarioApuesta = await usersCollection.findOne({ jid: sender });
-            const saldoActual = usuarioApuesta?.coins || 0;
+            const saldoActual = usuarioApuesta?.soles || 0;
             if (saldoActual < montoApuesta) {
-                return await sock.sendMessage(from, { text: `❌ No tienes suficientes coins. Tu saldo es *🪙 ${saldoActual}*.` }, { quoted: m });
+                return await sock.sendMessage(from, { text: `❌ No tienes suficientes soles. Tu saldo es *🪙 ${saldoActual}*.` }, { quoted: m });
             }
 
             const resultadoMoneda = Math.random() < 0.5 ? 'cara' : 'cruz';
             const gano = resultadoMoneda === eleccion;
-            const cambioCoins = gano ? montoApuesta : -montoApuesta;
-            await usersCollection.updateOne({ jid: sender }, { $inc: { coins: cambioCoins } });
+            const cambioSoles = gano ? montoApuesta : -montoApuesta;
+            await usersCollection.updateOne({ jid: sender }, { $inc: { soles: cambioSoles } });
 
             const textoResultado = gano
-                ? `🎉 ¡Salió *${resultadoMoneda}*! Ganaste *🪙 ${montoApuesta} coins*.`
-                : `😢 Salió *${resultadoMoneda}*. Perdiste *🪙 ${montoApuesta} coins*.`;
+                ? `🎉 ¡Salió *${resultadoMoneda}*! Ganaste *🪙 ${montoApuesta} soles*.`
+                : `😢 Salió *${resultadoMoneda}*. Perdiste *🪙 ${montoApuesta} soles*.`;
             return await sock.sendMessage(from, { text: textoResultado }, { quoted: m });
         }
 
@@ -653,8 +714,8 @@ async function connectToWhatsApp() {
                 return await sock.sendMessage(from, { text: '⚠️ Elige *rojo*, *negro* o *verde*. Ej: *#ruleta 100 rojo*' }, { quoted: m });
             }
             const usuarioRuleta = await usersCollection.findOne({ jid: sender });
-            const saldoRuleta = usuarioRuleta?.coins || 0;
-            if (saldoRuleta < montoRuleta) return await sock.sendMessage(from, { text: `❌ No tienes suficientes coins.` }, { quoted: m });
+            const saldoRuleta = usuarioRuleta?.soles || 0;
+            if (saldoRuleta < montoRuleta) return await sock.sendMessage(from, { text: `❌ No tienes suficientes soles.` }, { quoted: m });
 
             const numeroSalido = Math.floor(Math.random() * 37);
             let colorSalido = 'verde';
@@ -663,11 +724,11 @@ async function connectToWhatsApp() {
             let multiplicador = 0;
             if (colorSalido === colorElegido) multiplicador = colorSalido === 'verde' ? 14 : 2;
             const cambioRuleta = multiplicador > 0 ? montoRuleta * (multiplicador - 1) : -montoRuleta;
-            await usersCollection.updateOne({ jid: sender }, { $inc: { coins: cambioRuleta } });
+            await usersCollection.updateOne({ jid: sender }, { $inc: { soles: cambioRuleta } });
 
             const textoRuleta = multiplicador > 0
-                ? `🎡 Salió *${numeroSalido} (${colorSalido})*. ¡Ganaste *🪙 ${cambioRuleta} coins*!`
-                : `🎡 Salió *${numeroSalido} (${colorSalido})*. Perdiste *🪙 ${montoRuleta} coins*.`;
+                ? `🎡 Salió *${numeroSalido} (${colorSalido})*. ¡Ganaste *🪙 ${cambioRuleta} soles*!`
+                : `🎡 Salió *${numeroSalido} (${colorSalido})*. Perdiste *🪙 ${montoRuleta} soles*.`;
             return await sock.sendMessage(from, { text: textoRuleta }, { quoted: m });
         }
 
@@ -675,8 +736,8 @@ async function connectToWhatsApp() {
             const montoSlots = parseInt(args[0]);
             if (!montoSlots || isNaN(montoSlots) || montoSlots <= 0) return await sock.sendMessage(from, { text: '⚠️ Formato: *#slots [monto]*' }, { quoted: m });
             const usuarioSlots = await usersCollection.findOne({ jid: sender });
-            const saldoSlots = usuarioSlots?.coins || 0;
-            if (saldoSlots < montoSlots) return await sock.sendMessage(from, { text: `❌ No tienes suficientes coins.` }, { quoted: m });
+            const saldoSlots = usuarioSlots?.soles || 0;
+            if (saldoSlots < montoSlots) return await sock.sendMessage(from, { text: `❌ No tienes suficientes soles.` }, { quoted: m });
 
             const simbolos = ['🍒', '🍋', '🔔', '💎', '⭐'];
             const tirada = [0, 0, 0].map(() => simbolos[Math.floor(Math.random() * simbolos.length)]);
@@ -690,11 +751,11 @@ async function connectToWhatsApp() {
             }
 
             const cambioSlots = multiplicadorSlots > 0 ? Math.round(montoSlots * (multiplicadorSlots - 1)) : -montoSlots;
-            await usersCollection.updateOne({ jid: sender }, { $inc: { coins: cambioSlots } });
+            await usersCollection.updateOne({ jid: sender }, { $inc: { soles: cambioSlots } });
 
             const textoSlots = multiplicadorSlots > 0
-                ? `🎰 [ ${lineaTexto} ]\n¡Ganaste *🪙 ${cambioSlots} coins*!`
-                : `🎰 [ ${lineaTexto} ]\nPerdiste *🪙 ${montoSlots} coins*.`;
+                ? `🎰 [ ${lineaTexto} ]\n¡Ganaste *🪙 ${cambioSlots} soles*!`
+                : `🎰 [ ${lineaTexto} ]\nPerdiste *🪙 ${montoSlots} soles*.`;
             return await sock.sendMessage(from, { text: textoSlots }, { quoted: m });
         }
 
@@ -774,8 +835,9 @@ async function connectToWhatsApp() {
             const userData = await usersCollection.findOne({ jid: target }) || {};
             const statsData = from.endsWith('@g.us') ? (await groupStatsCollection.findOne({ jid: target, groupId: from }) || {}) : {};
             
-            let nombrePareja = 'Soltero/a 💔';
-            if (userData.pareja) nombrePareja = `@${userData.pareja.split('@')[0]} 💍`;
+            let parejas = userData.pareja || [];
+            if (typeof parejas === 'string') parejas = [parejas];
+            let nombrePareja = parejas.length > 0 ? parejas.map(p => `@${p.split('@')[0]} 💍`).join(', ') : 'Soltero/a 💔';
 
             const redes = userData.redes || {};
             let redesTxt = '';
@@ -793,11 +855,11 @@ async function connectToWhatsApp() {
                 `💬 *Frase:* "${userData.frase || 'Sin frase'}"\n` +
                 `💍 *Estado Civil:* ${nombrePareja}\n` +
                 `🎂 *Cumpleaños:* ${userData.cumple || 'No registrado'}\n` +
-                `🪙 *Coins:* ${userData.coins || 0}\n` +
+                `🪙 *Soles:* ${userData.soles || 0}\n` +
                 `📊 *Mensajes:* ${statsData.messageCount || 0}\n` +
                 (redesTxt ? `\n🌐 *REDES SOCIALES:*\n${redesTxt}` : '');
 
-            await sock.sendMessage(from, { text: perfilTxt, mentions: [target, userData.pareja].filter(Boolean) }, { quoted: m });
+            await sock.sendMessage(from, { text: perfilTxt, mentions: [target, ...parejas].filter(Boolean) }, { quoted: m });
             if (userData.stickerBase64) {
                 try {
                     await sock.sendMessage(from, { sticker: Buffer.from(userData.stickerBase64, 'base64') });
@@ -918,6 +980,12 @@ async function connectToWhatsApp() {
         if (command === 'casarse' || command === 'matrimonio') {
             const target = m.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0];
             if (!target || target === sender) return await sock.sendMessage(from, { text: '⚠️ Menciona a otra persona para casarte.' }, { quoted: m });
+            
+            const userData = await usersCollection.findOne({ jid: sender });
+            const parejas = Array.isArray(userData?.pareja) ? userData.pareja : (userData?.pareja ? [userData.pareja] : []);
+            
+            if (parejas.includes(target)) return await sock.sendMessage(from, { text: '⚠️ Ya estás casado/a con esa persona.' }, { quoted: m });
+
             propuestasMatrimonio.set(target, sender);
             return await sock.sendMessage(from, { text: `💍 ¡@${sender.split('@')[0]} le propuso matrimonio a @${target.split('@')[0]}!\nEscribe *#aceptar* para confirmar.`, mentions: [sender, target] }, { quoted: m });
         }
@@ -925,63 +993,112 @@ async function connectToWhatsApp() {
         if (command === 'aceptar') {
             const proponte = propuestasMatrimonio.get(sender);
             if (!proponte) return await sock.sendMessage(from, { text: '⚠️ No tienes propuestas pendientes.' }, { quoted: m });
-            await usersCollection.updateOne({ jid: sender }, { $set: { pareja: proponte } }, { upsert: true });
-            await usersCollection.updateOne({ jid: proponte }, { $set: { pareja: sender } }, { upsert: true });
+            
+            await usersCollection.updateOne({ jid: sender }, { $addToSet: { pareja: proponte } }, { upsert: true });
+            await usersCollection.updateOne({ jid: proponte }, { $addToSet: { pareja: sender } }, { upsert: true });
+            
             propuestasMatrimonio.delete(sender);
             return await sock.sendMessage(from, { text: `🎉 ¡VIVA LOS NOVIOS! @${proponte.split('@')[0]} y @${sender.split('@')[0]} están casados. 💍`, mentions: [sender, proponte] }, { quoted: m });
         }
 
-
+        // ==========================================
+        // DIVORCIO CON ENCUESTA
+        // ==========================================
         if (command === 'divorcio' || command === 'divorciarse') {
-            const tipo = args[0]?.toLowerCase();
+            const textoComando = args.join(' ').toLowerCase();
+            const esJuicio = textoComando.includes('juicio');
+            const esEncuesta = textoComando.includes('encuesta');
+            const target = m.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0];
+
             const userData = await usersCollection.findOne({ jid: sender });
-            
-            if (!userData || !userData.pareja) {
+            let parejas = userData?.pareja || [];
+            if (typeof parejas === 'string') parejas = [parejas];
+
+            if (parejas.length === 0) {
                 return await sock.sendMessage(from, { text: '⚠️ No estás casado/a con nadie actualmente. 💔' }, { quoted: m });
             }
 
-            const exPareja = userData.pareja;
+            let exPareja;
+            if (parejas.length === 1) {
+                exPareja = parejas[0]; 
+            } else {
+                if (!target) return await sock.sendMessage(from, { text: '⚠️ Estás casado/a con varias personas. Debes mencionar a quién divorciar. Ej: *#divorcio @usuario juicio*' }, { quoted: m });
+                if (!parejas.includes(target)) return await sock.sendMessage(from, { text: '⚠️ No estás casado/a con esa persona.' }, { quoted: m });
+                exPareja = target;
+            }
+
+            if (esEncuesta) {
+                if (!from.endsWith('@g.us')) return await sock.sendMessage(from, { text: '⚠️ Las encuestas solo funcionan en grupos.' }, { quoted: m });
+                if (encuestasDivorcio.has(from)) return await sock.sendMessage(from, { text: '⚠️ Ya hay una encuesta de divorcio activa en este grupo.' }, { quoted: m });
+
+                encuestasDivorcio.set(from, { demandante: sender, demandado: exPareja, votosSi: 0, votosNo: 0, votantes: new Set() });
+
+                await sock.sendMessage(from, { 
+                    text: `⚖️ *ENCUESTA DE DIVORCIO* ⚖️\n\n@${sender.split('@')[0]} pidió divorciarse de @${exPareja.split('@')[0]}.\n\nEl grupo decide su futuro:\n👉 Vota *#votesi* para separarlos.\n👉 Vota *#voteno* para mantenerlos juntos.\n\n⏱️ La votación se cierra en 10 minutos.`, 
+                    mentions: [sender, exPareja] 
+                }, { quoted: m });
+
+                setTimeout(async () => {
+                    const encuesta = encuestasDivorcio.get(from);
+                    if (!encuesta) return;
+
+                    encuestasDivorcio.delete(from);
+                    if (encuesta.votosSi > encuesta.votosNo) {
+                        await usersCollection.updateOne({ jid: sender }, { $pull: { pareja: exPareja } });
+                        await usersCollection.updateOne({ jid: exPareja }, { $pull: { pareja: sender } });
+                        await sock.sendMessage(from, { text: `⚖️ *RESULTADOS*: ¡EL PUEBLO HABLÓ! (${encuesta.votosSi} a ${encuesta.votosNo})\nLa pareja conformada por @${sender.split('@')[0]} y @${exPareja.split('@')[0]} se ha divorciado oficialmente. 📝💔`, mentions: [sender, exPareja] });
+                    } else {
+                        await sock.sendMessage(from, { text: `⚖️ *RESULTADOS*: ¡DIVORCIO DENEGADO! (${encuesta.votosSi} a ${encuesta.votosNo})\nTendrán que seguir casados y arreglar sus problemas. 💍🔒` });
+                    }
+                }, 600000); // 10 minutos
+                return;
+            }
+
             const exData = await usersCollection.findOne({ jid: exPareja }) || {};
 
-            // Separación de estados en la base de datos
-            await usersCollection.updateOne({ jid: sender }, { $unset: { pareja: "" } });
-            await usersCollection.updateOne({ jid: exPareja }, { $unset: { pareja: "" } });
+            await usersCollection.updateOne({ jid: sender }, { $pull: { pareja: exPareja } });
+            await usersCollection.updateOne({ jid: exPareja }, { $pull: { pareja: sender } });
 
-            if (tipo === 'juicio') {
+            if (esJuicio) {
                 const pierdeDemandante = Math.random() < 0.5;
 
                 if (pierdeDemandante) {
-                    // Pierdes tú: le das el 50% de tus monedas a tu ex
-                    const mitadMias = Math.floor((userData.coins || 0) * 0.5);
+                    const mitadMias = Math.floor((userData.soles || 0) * 0.5);
                     if (mitadMias > 0) {
-                        await usersCollection.updateOne({ jid: sender }, { $inc: { coins: -mitadMias } });
-                        await usersCollection.updateOne({ jid: exPareja }, { $inc: { coins: mitadMias } });
+                        await usersCollection.updateOne({ jid: sender }, { $inc: { soles: -mitadMias } });
+                        await usersCollection.updateOne({ jid: exPareja }, { $inc: { soles: mitadMias } });
                     }
-                    return await sock.sendMessage(from, { 
-                        text: `⚖️ *JUICIO DE DIVORCIO PERDIDO* ⚖️\n\nEl juez falló a favor de @${exPareja.split('@')[0]}. Perdiste el 50% de tus monedas (🪙 ${mitadMias} coins) como pensión compensatoria. 📉💔`, 
-                        mentions: [exPareja] 
-                    }, { quoted: m });
+                    return await sock.sendMessage(from, { text: `⚖️ *JUICIO DE DIVORCIO PERDIDO* ⚖️\n\nEl juez falló a favor de @${exPareja.split('@')[0]}. Perdiste el 50% de tus bienes (🪙 ${mitadMias} soles) como pensión compensatoria. 📉💔`, mentions: [exPareja] }, { quoted: m });
                 } else {
-                    // Ganas tú: le quitas el 50% de las monedas a tu ex
-                    const mitadDeEx = Math.floor((exData.coins || 0) * 0.5);
+                    const mitadDeEx = Math.floor((exData.soles || 0) * 0.5);
                     if (mitadDeEx > 0) {
-                        await usersCollection.updateOne({ jid: exPareja }, { $inc: { coins: -mitadDeEx } });
-                        await usersCollection.updateOne({ jid: sender }, { $inc: { coins: mitadDeEx } });
+                        await usersCollection.updateOne({ jid: exPareja }, { $inc: { soles: -mitadDeEx } });
+                        await usersCollection.updateOne({ jid: sender }, { $inc: { soles: mitadDeEx } });
                     }
-                    return await sock.sendMessage(from, { 
-                        text: `⚖️ *JUICIO DE DIVORCIO GANADO* ⚖️\n\n¡Ganaste el caso contra @${exPareja.split('@')[0]}! La corte te otorgó el 50% de sus bienes (🪙 ${mitadDeEx} coins). 🏛️🎉`, 
-                        mentions: [exPareja] 
-                    }, { quoted: m });
+                    return await sock.sendMessage(from, { text: `⚖️ *JUICIO DE DIVORCIO GANADO* ⚖️\n\n¡Ganaste el caso contra @${exPareja.split('@')[0]}! La corte te otorgó el 50% de sus bienes (🪙 ${mitadDeEx} soles). 🏛️🎉`, mentions: [exPareja] }, { quoted: m });
                 }
             }
 
-            return await sock.sendMessage(from, { 
-                text: `📜 *DIVORCIO DE MUTUO ACUERDO* 📜\n\n@${sender.split('@')[0]} y @${exPareja.split('@')[0]} firmaron la separación en paz. Cada quien conserva sus monedas. 📝💔`, 
-                mentions: [sender, exPareja] 
-            }, { quoted: m });
+            return await sock.sendMessage(from, { text: `📜 *DIVORCIO DE MUTUO ACUERDO* 📜\n\n@${sender.split('@')[0]} y @${exPareja.split('@')[0]} firmaron la separación en paz. Cada quien conserva sus soles. 📝💔`, mentions: [sender, exPareja] }, { quoted: m });
         }
 
+        if (command === 'votesi' || command === 'voteno') {
+            const encuesta = encuestasDivorcio.get(from);
+            if (!encuesta) return await sock.sendMessage(from, { text: '⚠️ No hay ninguna encuesta de divorcio activa en este momento.' }, { quoted: m });
+            
+            if (encuesta.votantes.has(sender)) return await sock.sendMessage(from, { text: '⚠️ Ya registramos tu voto para esta encuesta.' }, { quoted: m });
+            
+            encuesta.votantes.add(sender);
+            
+            if (command === 'votesi') encuesta.votosSi++;
+            if (command === 'voteno') encuesta.votosNo++;
+            
+            return await sock.sendMessage(from, { text: `✅ Voto registrado. (SI: ${encuesta.votosSi} | NO: ${encuesta.votosNo})` }, { quoted: m });
+        }
 
+        // ==========================================
+        // COMANDOS DE MEDIOS Y ADMIN
+        // ==========================================
         if (command === 'ia' || command === 'gemini' || command === 'ai') {
             const query = args.join(' ');
             if (!query) return await sock.sendMessage(from, { text: '⚠️ Escribe algo para consultar a la IA.' }, { quoted: m });
@@ -1100,15 +1217,15 @@ async function connectToWhatsApp() {
             const u = await usersCollection.findOne({ jid: target });
             const esMio = target === sender;
             const mensajeSaldo = esMio 
-                ? `🪙 Tienes *${u ? (u.coins || 0) : 0} coins*.` 
-                : `🪙 El usuario @${target.split('@')[0]} tiene *${u ? (u.coins || 0) : 0} coins*.`;
+                ? `🪙 Tienes *${u ? (u.soles || 0) : 0} soles*.` 
+                : `🪙 El usuario @${target.split('@')[0]} tiene *${u ? (u.soles || 0) : 0} soles*.`;
             return await sock.sendMessage(from, { text: mensajeSaldo, mentions: [target] }, { quoted: m });
         }
 
         if (command === 'work' || command === 'w') {
             const earned = Math.floor(Math.random() * 400) + 100;
-            await usersCollection.updateOne({ jid: sender }, { $inc: { coins: earned } }, { upsert: true });
-            return await sock.sendMessage(from, { text: `💼 Ganaste *🪙 ${earned} coins*.` }, { quoted: m });
+            await usersCollection.updateOne({ jid: sender }, { $inc: { soles: earned } }, { upsert: true });
+            return await sock.sendMessage(from, { text: `💼 Ganaste *🪙 ${earned} soles*.` }, { quoted: m });
         }
     });
 }
