@@ -33,7 +33,7 @@ const server = http.createServer(async (req, res) => {
             const urlParams = new URL(req.url, `http://${req.headers.host}`);
             const queryUser = urlParams.searchParams.get('user')?.trim();
             
-            console.log(`🔍 Web API - Buscando usuario: "${queryUser}"`);
+            console.log(`🔍 Web API - Buscando usuario con texto: "${queryUser}"`);
 
             if (!queryUser) {
                 res.end(JSON.stringify({ error: 'Ingresa un número de usuario válido' }));
@@ -43,14 +43,9 @@ const server = http.createServer(async (req, res) => {
             const dbClient = new MongoClient(process.env.MONGODB_URI);
             await dbClient.connect();
             
-            // DIAGNÓSTICO: Veremos todos los JIDs que hay guardados en la base de datos en los logs de Render
-            const todosLosUsuarios = await dbClient.db('whatsapp_bot').collection('users').find({}).toArray();
-            console.log("📋 JIDs guardados en MongoDB:", todosLosUsuarios.map(u => u.jid));
-
-            const regexFlexible = new RegExp(`^${queryUser}(:\\d+)?@s\\.whatsapp\\.net$|^${queryUser}$`, 'i');
-            
+            // Búsqueda simple por subcadena (si el ID contiene los números que buscas, lo encuentra)
             const userDoc = await dbClient.db('whatsapp_bot').collection('users').findOne({ 
-                jid: { $regex: regexFlexible } 
+                jid: { $regex: queryUser, $options: 'i' } 
             });
             
             await dbClient.close();
@@ -63,13 +58,13 @@ const server = http.createServer(async (req, res) => {
 
             console.log(`✅ Web API - Perfil encontrado para: ${userDoc.jid}`);
             res.end(JSON.stringify({
-                jid: userDoc.jid ? userDoc.jid.split('@')[0].split(':')[0] : 'Desconocido',
+                jid: userDoc.jid,
                 coins: userDoc.coins || 0,
                 edad: userDoc.edad || 'No especificada',
                 frase: userDoc.frase || 'Sin frase',
                 genero: userDoc.genero || 'No especificado',
                 cumple: userDoc.cumple || 'No registrado',
-                pareja: userDoc.pareja ? userDoc.pareja.split('@')[0].split(':')[0] : 'Soltero/a 💔',
+                pareja: userDoc.pareja ? userDoc.pareja : 'Soltero/a 💔',
                 redes: userDoc.redes || {}
             }));
         } catch (e) {
@@ -1261,9 +1256,16 @@ async function connectToWhatsApp() {
             } catch { await sock.sendMessage(from, { text: '❌ Error al enviar anuncio.' }, { quoted: m }); }
         }
 
-        if (command === 'bal') {
-            const u = await usersCollection.findOne({ jid: sender });
-            return await sock.sendMessage(from, { text: `🪙 Tienes *${u ? (u.coins || 0) : 0} coins*.` }, { quoted: m });
+        if (command === 'bal' || command === 'balance') {
+            const target = m.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0] || sender;
+            const u = await usersCollection.findOne({ jid: target });
+            const esMio = target === sender;
+            
+            const mensajeSaldo = esMio 
+                ? `🪙 Tienes *${u ? (u.coins || 0) : 0} coins*.` 
+                : `🪙 El usuario @${target.split('@')[0]} tiene *${u ? (u.coins || 0) : 0} coins*.`;
+                
+            return await sock.sendMessage(from, { text: mensajeSaldo, mentions: [target] }, { quoted: m });
         }
 
         if (command === 'work' || command === 'w') {
