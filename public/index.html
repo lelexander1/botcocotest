@@ -3,21 +3,79 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CocoBot - Panel Web</title>
+    <title>CocoBot - Consulta de Perfiles</title>
     <style>
         body { background-color: #0f172a; color: #f8fafc; font-family: system-ui, -apple-system, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
         .card { background: #1e293b; padding: 2rem; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.3); text-align: center; max-width: 450px; width: 100%; border: 1px solid #334155; }
         .status { display: inline-block; width: 10px; height: 10px; background-color: #22c55e; border-radius: 50%; margin-right: 6px; box-shadow: 0 0 8px #22c55e; }
-        h1 { font-size: 1.5rem; margin-bottom: 0.5rem; color: #38bdf8; }
+        h1 { font-size: 1.4rem; margin-bottom: 0.5rem; color: #38bdf8; }
         p { color: #94a3b8; font-size: 0.9rem; }
-        .badge { background: #334155; color: #e2e8f0; padding: 4px 10px; border-radius: 20px; font-size: 0.75rem; font-weight: bold; display: inline-block; margin-top: 1rem; }
+        input { padding: 10px; width: 80%; border-radius: 6px; border: 1px solid #334155; background: #0f172a; color: #fff; margin-bottom: 12px; font-size: 0.9rem; outline: none; text-align: center; }
+        button { padding: 10px 20px; background: #38bdf8; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; color: #0f172a; transition: 0.2s; }
+        button:hover { background: #7dd3fc; }
+        .result-box { margin-top: 20px; text-align: left; background: #0f172a; padding: 15px; border-radius: 8px; border: 1px solid #334155; display: none; }
+        .result-box p { margin: 6px 0; color: #e2e8f0; font-size: 0.85rem; }
+        .error { color: #ef4444; font-size: 0.85rem; margin-top: 10px; }
     </style>
 </head>
 <body>
     <div class="card">
-        <h1>🤖 CocoBot Web</h1>
-        <p><span class="status"></span>Panel Operativo Sincronizado</p>
-        <div class="badge">Netlify Frontend • Render Backend</div>
+        <h1>🤖 CocoBot Perfiles</h1>
+        <p><span class="status"></span>Sistema Sincronizado</p>
+        <br>
+        <input type="text" id="userInput" placeholder="Ej: 51999999999 (Tu número)">
+        <br>
+        <button onclick="buscarPerfil()">Consultar Perfil</button>
+        
+        <div id="errorMsg" class="error"></div>
+
+        <div id="resultBox" class="result-box">
+            <p><b>📌 Usuario:</b> <span id="resUser"></span></p>
+            <p><b>🪙 Coins:</b> <span id="resCoins"></span></p>
+            <p><b>🎂 Edad:</b> <span id="resEdad"></span></p>
+            <p><b>💬 Frase:</b> "<span id="resFrase"></span>"</p>
+            <p><b>⚧️ Género:</b> <span id="resGenero"></span></p>
+            <p><b>💍 Estado Civil:</b> <span id="resPareja"></span></p>
+            <p><b>🎂 Cumpleaños:</b> <span id="resCumple"></span></p>
+        </div>
     </div>
-</body>
-</html>
+
+    <script>
+        async function buscarPerfil() {
+            const query = document.getElementById('userInput').value.trim();
+            const errorDiv = document.getElementById('errorMsg');
+            const resultBox = document.getElementById('resultBox');
+            
+            errorDiv.innerText = "";
+            resultBox.style.display = "none";
+
+            if (!query) {
+                errorDiv.innerText = "⚠️ Por favor, ingresa un número para buscar.";
+                return;
+            }
+
+            errorDiv.innerText = "Buscando en la base de datos...";
+
+            try {
+                // Reemplaza con la URL pública real de tu backend en Render
+                const response = await fetch(`https://botcocotest.onrender.com/api/perfil?user=${query}`);
+                const data = await response.json();
+                
+                if (data.error) {
+                    errorDiv.innerText = data.error;
+                } else {
+                    errorDiv.innerText = "";
+                    document.getElementById('resUser').innerText = "@" + data.jid;
+                    document.getElementById('resCoins').innerText = "🪙 " + data.coins;
+                    document.getElementById('resEdad').innerText = data.edad;
+                    document.getElementById('resFrase').innerText = data.frase;
+                    document.getElementById('resGenero').innerText = data.genero;
+                    document.getElementById('resPareja').innerText = data.pareja;
+                    document.getElementById('resCumple').innerText = data.cumple;
+                    resultBox.style.display = "block";
+                }
+            } catch (e) {
+                errorDiv.innerText = "❌ Error de conexión con el servidor de Render.";
+            }
+        }
+    </script>
