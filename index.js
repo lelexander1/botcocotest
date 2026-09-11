@@ -715,9 +715,7 @@ async function connectToWhatsApp() {
             return await sock.sendMessage(from, { text: `✅ Voto registrado. (Culpable: ${juicio.votosSi} | Inocente: ${juicio.votosNo})` }, { quoted: m });
         }
 
-        // ==========================================
-        // COMANDO INTELIGENCIA ARTIFICIAL CON MEMORIA (#ia)
-        // ==========================================
+
         if (command === 'ia' || command === 'gemini') {
             const pregunta = args.join(' ');
             if (!pregunta) {
@@ -733,23 +731,21 @@ async function connectToWhatsApp() {
 
                 await sock.sendMessage(from, { text: '🧠 Pensando...' }, { quoted: m });
 
-                // 2. Usamos el cliente moderno de Gemini para manejar el chat con memoria
-                const model = ai.models; // O el modelo configurado en tu SDK
-                
-                // Formateamos el historial para pasarlo a la API de Gemini
-                const chatSession = ai.chats.create({
+                // 2. Creamos la sesión de chat con el SDK oficial y pasamos el historial previo
+                const chat = ai.chats.create({
                     model: 'gemini-2.5-flash',
                     history: historial
                 });
 
-                const result = await chatSession.sendMessage({ message: pregunta });
+                // 3. Enviamos la nueva pregunta
+                const result = await chat.sendMessage({ message: pregunta });
                 const respuestaTexto = result.text;
 
-                // 3. Actualizamos el historial local con el intercambio actual
+                // 4. Actualizamos el historial local
                 historial.push({ role: 'user', parts: [{ text: pregunta }] });
                 historial.push({ role: 'model', parts: [{ text: respuestaTexto }] });
 
-                // Limitamos el historial a los últimos 12 mensajes para no saturar memoria
+                // Limitamos el historial a los últimos 12 mensajes para optimizar
                 if (historial.length > 12) {
                     historial.splice(0, 2);
                 }
@@ -761,6 +757,7 @@ async function connectToWhatsApp() {
                 return await sock.sendMessage(from, { text: '❌ Ocurrió un error al comunicarse con la IA.' }, { quoted: m });
             }
         }
+
 
         // ==========================================
         // SISTEMA DE TIENDA Y TRANSFERENCIAS
@@ -1015,21 +1012,18 @@ async function connectToWhatsApp() {
                 const metadata = await sock.groupMetadata(from);
                 const participantes = metadata.participants;
                 const admins = participantes.filter(p => p.admin !== null).map(p => p.id);
-                const botNumber = sock.user.id.includes(':') ? sock.user.id.split(':')[0] + '@s.whatsapp.net' : sock.user.id;
 
-                // Verificamos si el remitente es admin o el dueño del bot
                 if (!admins.includes(sender) && !esOwner(sender)) {
                     return await sock.sendMessage(from, { text: '⚠️ Solo los administradores pueden usar este comando.' }, { quoted: m });
                 }
 
                 const mensajeAnuncio = args.join(' ') || '¡Atención a todos!';
-                let textoFinal = `📢 *ANUNCIO OFICIAL* 📢\n\n*Mensaje:* ${mensajeAnuncio}\n\n*Etiquetados:*\n`;
                 
-                const menciones = [];
-                for (let participante of participantes) {
-                    textoFinal += `・ @${participante.id.split('@')[0]}\n`;
-                    menciones.push(participante.id);
-                }
+                // Texto limpio SIN la lista visible de etiquetas
+                let textoFinal = `📢 *ANUNCIO OFICIAL* 📢\n\n${mensajeAnuncio}`;
+                
+                // Recogemos todos los JIDs para que WhatsApp los mencione de forma silenciosa/oculta
+                const menciones = participantes.map(p => p.id);
 
                 return await sock.sendMessage(from, { 
                     text: textoFinal, 
@@ -1041,6 +1035,8 @@ async function connectToWhatsApp() {
                 return await sock.sendMessage(from, { text: '❌ No se pudo ejecutar el anuncio en este grupo.' }, { quoted: m });
             }
         }
+
+        
 
 
         if (command === 'crypto' || command === 'precio' || command === 'cripto') {
