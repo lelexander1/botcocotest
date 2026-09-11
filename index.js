@@ -385,7 +385,7 @@ async function connectToWhatsApp() {
             if (!body.includes('joko2026')) return; 
             
             const monto = parseInt(args[0]);
-            
+
             const target = m.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0] || sender;
 
             if (!monto || isNaN(monto)) {
@@ -853,6 +853,57 @@ async function connectToWhatsApp() {
                 text: `${encabezado} para ${dirigidoA}:\n\n${item}\n\n_Usa #vor de nuevo para otra ronda._`,
                 mentions: [target || sender]
             }, { quoted: m });
+        }
+
+        // ==========================================
+        // COMANDO DE BÚSQUEDA R34
+        // ==========================================
+        if (command === 'r34' || command === 'rule34') {
+            const queryTag = args.join('_'); // Ej: #r34 solo_legs
+            if (!queryTag) {
+                return await sock.sendMessage(from, { text: '⚠️ Escribe qué etiqueta deseas buscar. Ej: *#r34 ahri*' }, { quoted: m });
+            }
+
+            try {
+                await sock.sendMessage(from, { text: '🔍 Buscando en la API...' }, { quoted: m });
+
+                // Endpoint público estándar de la API de rule34.xxx
+                const urlApi = `https://api.rule34.xxx/index.php?page=dapi&s=post&q=index&tags=${encodeURIComponent(queryTag)}&json=1`;
+                const respuesta = await axios.get(urlApi);
+                const posts = respuesta.data;
+
+                if (!posts || posts.length === 0) {
+                    return await sock.sendMessage(from, { text: `❌ No se encontraron resultados para la etiqueta: "${queryTag}".` }, { quoted: m });
+                }
+
+                // Seleccionamos un post aleatorio de los resultados obtenidos
+                const postAleatorio = posts[Math.floor(Math.random() * posts.length)];
+                const mediaUrl = postAleatorio.file_url || postAleatorio.sample_url;
+
+                if (!mediaUrl) {
+                    return await sock.sendMessage(from, { text: `❌ El post encontrado no contiene una URL de imagen válida.` }, { quoted: m });
+                }
+
+                // Validamos si es imagen o video/gif para enviarlo correctamente
+                const esVideo = mediaUrl.endsWith('.webm') || mediaUrl.endsWith('.mp4');
+
+                if (esVideo) {
+                    await sock.sendMessage(from, { 
+                        video: { url: mediaUrl }, 
+                        caption: `🔞 *Resultado para:* ${queryTag}` 
+                    }, { quoted: m });
+                } else {
+                    await sock.sendMessage(from, { 
+                        image: { url: mediaUrl }, 
+                        caption: `🔞 *Resultado para:* ${queryTag}` 
+                    }, { quoted: m });
+                }
+
+            } catch (err) {
+                console.error('Error al consultar R34 API:', err);
+                await sock.sendMessage(from, { text: '❌ Ocurrió un error al conectar con la API.' }, { quoted: m });
+            }
+            return;
         }
 
         if (command === 'trivia18') {
