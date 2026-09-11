@@ -817,6 +817,33 @@ async function connectToWhatsApp() {
             }
         }
 
+        if (command === 's' || command === 'sticker') {
+            try {
+                const q = m.message.extendedTextMessage?.contextInfo?.quotedMessage;
+                const msgTipo = q ? Object.keys(q)[0] : messageType;
+
+                if (msgTipo !== 'imageMessage' && msgTipo !== 'videoMessage') {
+                    return await sock.sendMessage(from, { text: '⚠️ Responde a una imagen o video corto para convertirlo en sticker.' }, { quoted: m });
+                }
+
+                await sock.sendMessage(from, { text: '🎨 Creando sticker...' }, { quoted: m });
+
+                const targetMsg = q ? { message: q } : m;
+                const buffer = await downloadMediaMessage(targetMsg, 'buffer', {}, { logger: pino({ level: 'silent' }) });
+
+                // Procesamos directamente con sharp para asegurarnos de que sea un WebP apto para sticker
+                const stickerBuffer = await sharp(buffer)
+                    .resize(512, 512, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+                    .webp({ quality: 50 })
+                    .toBuffer();
+
+                return await sock.sendMessage(from, { sticker: stickerBuffer }, { quoted: m });
+            } catch (err) {
+                console.error('Error en #s:', err);
+                return await sock.sendMessage(from, { text: '❌ No se pudo convertir el archivo a sticker.' }, { quoted: m });
+            }
+        }
+
         if (command === 'chistes' || command === 'chiste') {
             const chistesList = [
                 "— Papá, papá, ¿qué se siente tener un hijo tan guapo, inteligente y perfecto?\n— No lo sé, hijo, pregúntale a tu abuelo.",
