@@ -855,6 +855,9 @@ async function connectToWhatsApp() {
             }, { quoted: m });
         }
 
+        // ==========================================
+        // COMANDO DE BÚSQUEDA R34 (AUTENTICADO)
+        // ==========================================
         if (command === 'r34' || command === 'rule34') {
             const queryTag = args.join('_');
             if (!queryTag) {
@@ -864,9 +867,10 @@ async function connectToWhatsApp() {
             try {
                 await sock.sendMessage(from, { text: '🔍 Buscando en la API...' }, { quoted: m });
 
-                const urlApi = `https://api.rule34.xxx/index.php?page=dapi&s=post&q=index&tags=${encodeURIComponent(queryTag)}&json=1`;
+                // Credenciales integradas directamente en la URL
+                const credenciales = "api_key=1a359b6ec76881037aaabb7a01c58d3517e50be10fe3ec88296f8f8f3f8d568bb1791051e0c5b23f641b42e1a9d4b8a73f11a883c013049f69fd9e4d292bcc85&user_id=6781834";
+                const urlApi = `https://api.rule34.xxx/index.php?page=dapi&s=post&q=index&tags=${encodeURIComponent(queryTag)}&json=1&${credenciales}`;
                 
-                // Añadimos el header User-Agent para evitar que el servidor rechace la petición
                 const respuesta = await axios.get(urlApi, {
                     headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' }
                 });
