@@ -980,6 +980,30 @@ async function connectToWhatsApp() {
             }
         }
 
+        if (command === 'toimg' || command === 'foto') {
+            try {
+                const q = m.message.extendedTextMessage?.contextInfo?.quotedMessage;
+                const msgTipo = q ? Object.keys(q)[0] : messageType;
+
+                if (msgTipo !== 'stickerMessage') {
+                    return await sock.sendMessage(from, { text: '⚠️ Responde a un sticker para convertirlo en imagen.' }, { quoted: m });
+                }
+
+                await sock.sendMessage(from, { text: '🔄 Convirtiendo a imagen...' }, { quoted: m });
+
+                const targetMsg = q ? { message: q } : m;
+                const buffer = await downloadMediaMessage(targetMsg, 'buffer', {}, { logger: pino({ level: 'silent' }) });
+
+                const outputBuffer = await sharp(buffer).jpeg().toBuffer();
+
+                return await sock.sendMessage(from, { image: outputBuffer, caption: '🖼️ Aquí tienes tu imagen.' }, { quoted: m });
+            } catch (err) {
+                console.error('Error en #toimg:', err);
+                return await sock.sendMessage(from, { text: '❌ No se pudo convertir el sticker a imagen.' }, { quoted: m });
+            }
+        }
+
+
         if (command === 'apostar' || command === 'apuesta') {
             const montoApuesta = parseInt(args[0]);
             const eleccion = args[1]?.toLowerCase();
