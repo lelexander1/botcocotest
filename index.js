@@ -100,6 +100,7 @@ const juiciosActivos = new Map();
 const triviaActiva = new Map(); 
 const mutedUsers = new Map();
 let nsfwHabilitado = true; // Por defecto encendido
+const chatHistoriales = new Map(); // Guarda el historial de mensajes por chat/grupo
 
 const apiUsageStats = {
     geminiRequests: 0, totalPromptTokens: 0,
@@ -715,6 +716,53 @@ async function connectToWhatsApp() {
         }
 
         // ==========================================
+        // COMANDO INTELIGENCIA ARTIFICIAL CON MEMORIA (#ia)
+        // ==========================================
+        if (command === 'ia' || command === 'gemini') {
+            const pregunta = args.join(' ');
+            if (!pregunta) {
+                return await sock.sendMessage(from, { text: '⚠️ Escribe qué deseas preguntarle a la IA.' }, { quoted: m });
+            }
+
+            try {
+                // 1. Inicializamos o recuperamos el historial del grupo/chat actual
+                if (!chatHistoriales.has(from)) {
+                    chatHistoriales.set(from, []);
+                }
+                const historial = chatHistoriales.get(from);
+
+                await sock.sendMessage(from, { text: '🧠 Pensando...' }, { quoted: m });
+
+                // 2. Usamos el cliente moderno de Gemini para manejar el chat con memoria
+                const model = ai.models; // O el modelo configurado en tu SDK
+                
+                // Formateamos el historial para pasarlo a la API de Gemini
+                const chatSession = ai.chats.create({
+                    model: 'gemini-2.5-flash',
+                    history: historial
+                });
+
+                const result = await chatSession.sendMessage({ message: pregunta });
+                const respuestaTexto = result.text;
+
+                // 3. Actualizamos el historial local con el intercambio actual
+                historial.push({ role: 'user', parts: [{ text: pregunta }] });
+                historial.push({ role: 'model', parts: [{ text: respuestaTexto }] });
+
+                // Limitamos el historial a los últimos 12 mensajes para no saturar memoria
+                if (historial.length > 12) {
+                    historial.splice(0, 2);
+                }
+
+                return await sock.sendMessage(from, { text: respuestaTexto }, { quoted: m });
+
+            } catch (err) {
+                console.error('Error detallado en la IA:', err);
+                return await sock.sendMessage(from, { text: '❌ Ocurrió un error al comunicarse con la IA.' }, { quoted: m });
+            }
+        }
+
+        // ==========================================
         // SISTEMA DE TIENDA Y TRANSFERENCIAS
         // ==========================================
         if (command === 'yapear' || command === 'transferir') {
@@ -957,6 +1005,43 @@ async function connectToWhatsApp() {
                 await sock.sendMessage(from, { text: '❌ Ocurrió un error al procesar el audio.' }, { quoted: m });
             }
         }
+
+        if (command === 'anuncio' || command === 'tagall' || command === 'todos') {
+            if (!from.endsWith('@g.us')) {
+                return await sock.sendMessage(from, { text: '⚠️ Este comando solo se puede usar en grupos.' }, { quoted: m });
+            }
+
+            try {
+                const metadata = await sock.groupMetadata(from);
+                const participantes = metadata.participants;
+                const admins = participantes.filter(p => p.admin !== null).map(p => p.id);
+                const botNumber = sock.user.id.includes(':') ? sock.user.id.split(':')[0] + '@s.whatsapp.net' : sock.user.id;
+
+                // Verificamos si el remitente es admin o el dueño del bot
+                if (!admins.includes(sender) && !esOwner(sender)) {
+                    return await sock.sendMessage(from, { text: '⚠️ Solo los administradores pueden usar este comando.' }, { quoted: m });
+                }
+
+                const mensajeAnuncio = args.join(' ') || '¡Atención a todos!';
+                let textoFinal = `📢 *ANUNCIO OFICIAL* 📢\n\n*Mensaje:* ${mensajeAnuncio}\n\n*Etiquetados:*\n`;
+                
+                const menciones = [];
+                for (let participante of participantes) {
+                    textoFinal += `・ @${participante.id.split('@')[0]}\n`;
+                    menciones.push(participante.id);
+                }
+
+                return await sock.sendMessage(from, { 
+                    text: textoFinal, 
+                    mentions: menciones 
+                }, { quoted: m });
+
+            } catch (err) {
+                console.error('Error en #anuncio:', err);
+                return await sock.sendMessage(from, { text: '❌ No se pudo ejecutar el anuncio en este grupo.' }, { quoted: m });
+            }
+        }
+
 
         if (command === 'crypto' || command === 'precio' || command === 'cripto') {
             const moneda = args[0]?.toLowerCase() || 'bitcoin';
