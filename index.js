@@ -435,9 +435,9 @@ async function connectToWhatsApp() {
                 `⏰ *#recordatorio o #recg [tiempo] [msj]*\n   ↳ Programa recordatorios.\n\n` +
                 `🎨 *#s / #gif / #toimg*\n   ↳ Crea y convierte stickers.\n\n` +
                 `💍 *#casarse [@usuario] / #aceptar*\n   ↳ Sistema de matrimonios.\n\n` +
-                `💔 *#divorcio [@usuario] [normal/juicio/encuesta]*\n   ↳ Tipos de separación.\n\n` +
+                `💔 *#divorcio [@usuario] [tipo]*\n   ↳ Tipos de separación (normal/juicio/encuesta).\n\n` +
                 `⚖️ *#juicio [@usuario] [monto] [motivo]*\n   ↳ Demanda a alguien para quitarle soles.\n\n` +
-                `🎂 *#cumple DD/MM / #cumples*\n   ↳ Registra cumpleaños.\n\n` +
+                `🎂 *#cumple DD/MM / #cumples*\n   ↳ Registra y consulta cumpleaños.\n\n` +
                 `🪙 *#bal / #work / #daily / #flip / #apostar / #ruleta / #slots*\n   ↳ Economía y juegos.\n\n` +
                 `💸 *#yapear [monto] [@usuario]*\n   ↳ Transfiere dinero a otra persona.\n\n` +
                 `🛒 *#tienda / #comprar [item]*\n   ↳ Tienda exclusiva para gastar tus soles.\n\n` +
@@ -479,6 +479,178 @@ async function connectToWhatsApp() {
                 await sock.sendMessage(from, { delete: keyParaBorrar }); 
             } catch (err) { 
                 await sock.sendMessage(from, { text: '❌ No pude eliminar el mensaje. Si el mensaje es de otra persona, asegúrate de que tengo permisos de Administrador en el grupo.' }, { quoted: m }); 
+            }
+            return;
+        }
+
+        // ==========================================
+        // COMANDO #FLIP - LANZAR MONEDA
+        // ==========================================
+        if (command === 'flip') {
+            const resultado = Math.random() < 0.5 ? 'cara' : 'cruz';
+            const emoji = resultado === 'cara' ? '👦' : '👑';
+            const stickerFlip = await obtenerGifAleatorio('coin flip spinning money', 'https://media.giphy.com/media/l0HYXi9jy3N2b0fDG/giphy.gif');
+            await sock.sendMessage(from, { text: `🪙 *LANZAMIENTO DE MONEDA* 🪙\n\n${emoji} *¡Salió ${resultado}!*` }, { quoted: m });
+            if (stickerFlip) await sock.sendMessage(from, { sticker: stickerFlip });
+            return;
+        }
+
+        // ==========================================
+        // COMANDO #GIF - OBTENER GIFS ALEATORIOS
+        // ==========================================
+        if (command === 'gif') {
+            const query = args.join(' ') || 'random';
+            try {
+                await sock.sendMessage(from, { text: `🔍 Buscando GIF para: *${query}*...` }, { quoted: m });
+                const gifSticker = await obtenerGifAleatorio(query, 'https://media.giphy.com/media/l0HYXi9jy3N2b0fDG/giphy.gif');
+                if (gifSticker) {
+                    return await sock.sendMessage(from, { sticker: gifSticker }, { quoted: m });
+                } else {
+                    return await sock.sendMessage(from, { text: '❌ No se pudo obtener el GIF.' }, { quoted: m });
+                }
+            } catch {
+                return await sock.sendMessage(from, { text: '❌ Error al buscar el GIF.' }, { quoted: m });
+            }
+        }
+
+        // ==========================================
+        // COMANDO #CUMPLE - REGISTRAR CUMPLEAÑOS
+        // ==========================================
+        if (command === 'cumple' || command === 'cumpleaños') {
+            const fecha = args[0];
+            if (!fecha || !fecha.includes('/')) {
+                return await sock.sendMessage(from, { text: '⚠️ Formato: *#cumple DD/MM* (ej: *#cumple 25/12*)' }, { quoted: m });
+            }
+
+            const [dia, mes] = fecha.split('/').map(Number);
+            if (!dia || !mes || dia < 1 || dia > 31 || mes < 1 || mes > 12) {
+                return await sock.sendMessage(from, { text: '⚠️ Fecha inválida. Usa formato DD/MM.' }, { quoted: m });
+            }
+
+            await usersCollection.updateOne({ jid: sender }, { $set: { cumple: `${String(dia).padStart(2, '0')}/${String(mes).padStart(2, '0')}` } }, { upsert: true });
+            return await sock.sendMessage(from, { text: `✅ ¡Tu cumpleaños ha sido registrado para el *${dia}/${mes}*! 🎂🎉` }, { quoted: m });
+        }
+
+        // ==========================================
+        // COMANDO #CUMPLES - VER CUMPLEAÑOS PRÓXIMOS
+        // ==========================================
+        if (command === 'cumples' || command === 'próximoscumples') {
+            if (!from.endsWith('@g.us')) {
+                return await sock.sendMessage(from, { text: '⚠️ Este comando solo funciona en grupos.' }, { quoted: m });
+            }
+
+            try {
+                const usuarios = await usersCollection.find({ cumple: { $exists: true, $ne: null } }).toArray();
+                if (usuarios.length === 0) {
+                    return await sock.sendMessage(from, { text: '📭 Aún no hay cumpleaños registrados en el grupo.' }, { quoted: m });
+                }
+
+                const cumpleanerosFiltrados = usuarios
+                    .map(u => ({
+                        jid: u.jid,
+                        cumple: u.cumple,
+                        diasFaltantes: calcularDiasFaltantes(u.cumple)
+                    }))
+                    .sort((a, b) => a.diasFaltantes - b.diasFaltantes)
+                    .slice(0, 10);
+
+                let txt = '🎂 *PRÓXIMOS CUMPLEAÑOS* 🎂\n\n';
+                cumpleanerosFiltrados.forEach((u, idx) => {
+                    const diasFaltantes = u.diasFaltantes;
+                    if (diasFaltantes === 0) {
+                        txt += `${idx + 1}. 🎉 *HOY* - @${u.jid.split('@')[0]} (${u.cumple})\n`;
+                    } else if (diasFaltantes === 1) {
+                        txt += `${idx + 1}. 🔜 *MAÑANA* - @${u.jid.split('@')[0]} (${u.cumple})\n`;
+                    } else {
+                        txt += `${idx + 1}. ⏳ En ${diasFaltantes} días - @${u.jid.split('@')[0]} (${u.cumple})\n`;
+                    }
+                });
+
+                const mentions = cumpleanerosFiltrados.map(u => u.jid);
+                return await sock.sendMessage(from, { text: txt, mentions }, { quoted: m });
+            } catch (e) {
+                console.error('Error en #cumples:', e);
+                return await sock.sendMessage(from, { text: '❌ Error al obtener los cumpleaños.' }, { quoted: m });
+            }
+        }
+
+        // ==========================================
+        // SISTEMA DE DIVORCIO
+        // ==========================================
+        if (command === 'divorcio') {
+            const target = m.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0];
+            const tipo = args[1]?.toLowerCase() || 'normal';
+
+            if (!target || target === sender) {
+                return await sock.sendMessage(from, { text: '⚠️ Menciona a la persona de la que deseas divorciarte.' }, { quoted: m });
+            }
+
+            if (!['normal', 'juicio', 'encuesta'].includes(tipo)) {
+                return await sock.sendMessage(from, { text: '⚠️ Tipo de divorcio: *normal*, *juicio* o *encuesta*.' }, { quoted: m });
+            }
+
+            const uData = await usersCollection.findOne({ jid: sender });
+            const parejas = Array.isArray(uData?.pareja) ? uData.pareja : (uData?.pareja ? [uData.pareja] : []);
+
+            if (!parejas.includes(target)) {
+                return await sock.sendMessage(from, { text: '⚠️ No estás casado/a con esa persona.' }, { quoted: m });
+            }
+
+            if (tipo === 'normal') {
+                // Divorcio rápido
+                await usersCollection.updateOne({ jid: sender }, { $pull: { pareja: target } });
+                await usersCollection.updateOne({ jid: target }, { $pull: { pareja: sender } });
+                return await sock.sendMessage(from, {
+                    text: `💔 *DIVORCIO CONSUMADO* 💔\n\n@${sender.split('@')[0]} y @${target.split('@')[0]} han decidido separarse.\n\n_Las bendiciones terminaron. ¡Que encuentren paz!_ 🕊️`,
+                    mentions: [sender, target]
+                }, { quoted: m });
+            } else if (tipo === 'juicio') {
+                // Juicio de divorcio (como en #juicio pero para parejas)
+                if (juiciosActivos.has(from)) {
+                    return await sock.sendMessage(from, { text: '⚠️ Ya hay un juicio activo en este grupo.' }, { quoted: m });
+                }
+
+                juiciosActivos.set(from, {
+                    demandante: sender,
+                    demandado: target,
+                    monto: 0,
+                    votosSi: 0,
+                    votosNo: 0,
+                    votantes: new Set(),
+                    tipo: 'divorcio'
+                });
+
+                return await sock.sendMessage(from, {
+                    text: `⚖️ *TRIBUNAL DE DIVORCIO* ⚖️\n\n💔 *Demandante:* @${sender.split('@')[0]}\n💔 *Demandado:* @${target.split('@')[0]}\n\n👨‍⚖️ *El jurado (ustedes) decide:*\n👉 Escriban *#culpable* para DIVORCIARSE.\n👉 Escriban *#inocente* para CONTINUAR JUNTOS.\n\n⏱️ El veredicto se dictará en 5 minutos.`,
+                    mentions: [sender, target]
+                }, { quoted: m });
+            } else if (tipo === 'encuesta') {
+                // Encuesta de divorcio
+                encuestasDivorcio.set(from, {
+                    demandante: sender,
+                    demandado: target,
+                    siVotos: 0,
+                    noVotos: 0,
+                    votantes: new Set()
+                });
+
+                return await sock.sendMessage(from, {
+                    text: `📋 *ENCUESTA DE DIVORCIO* 📋\n\n¿Debe separarse @${sender.split('@')[0]} de @${target.split('@')[0]}?\n\n👉 *#si* - Que se divorcien\n👉 *#no* - Que sigan juntos\n\n⏱️ Resultado en 3 minutos.`,
+                    mentions: [sender, target]
+                }, { quoted: m });
+            }
+        }
+
+        // Procesar respuestas de encuesta de divorcio
+        if (command === 'si' || command === 'no') {
+            const encuesta = encuestasDivorcio.get(from);
+            if (encuesta && !encuesta.votantes.has(sender)) {
+                encuesta.votantes.add(sender);
+                if (command === 'si') encuesta.siVotos++;
+                else encuesta.noVotos++;
+                
+                const resultado = `(Si: ${encuesta.siVotos} | No: ${encuesta.noVotos})`;
+                await sock.sendMessage(from, { text: `✅ Voto registrado. ${resultado}` }, { quoted: m });
             }
             return;
         }
@@ -1228,14 +1400,6 @@ async function connectToWhatsApp() {
 
             return await sock.sendMessage(from, { text: `✅ ¡Recordatorio programado! Te avisaré ${tiempoTextoMostrar} (ID: \`${resultado.insertedId}\`).` }, { quoted: m });
         }
-
-        
-
-
-
-
-
-
 
         if (command === 'kill' || command === 'ban') {
             if (!from.endsWith('@g.us')) return await sock.sendMessage(from, { text: '⚠️ Solo grupos.' }, { quoted: m });
