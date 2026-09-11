@@ -99,6 +99,7 @@ const encuestasDivorcio = new Map();
 const juiciosActivos = new Map(); 
 const triviaActiva = new Map(); 
 const mutedUsers = new Map();
+let nsfwHabilitado = true; // Por defecto encendido
 
 const apiUsageStats = {
     geminiRequests: 0, totalPromptTokens: 0,
@@ -855,16 +856,19 @@ async function connectToWhatsApp() {
             }, { quoted: m });
         }
 
-        // ==========================================
-        // COMANDO DE BÚSQUEDA R34 (AUTENTICADO)
-        // ==========================================
         if (command === 'r34' || command === 'rule34') {
+            // El filtro va aquí adentro
+            if (!nsfwHabilitado) {
+                return await sock.sendMessage(from, { text: '❌ Los comandos +18 se encuentran desactivados temporalmente por el administrador.' }, { quoted: m });
+            }
+
             const queryTag = args.join('_');
             if (!queryTag) {
                 return await sock.sendMessage(from, { text: '⚠️ Escribe qué etiqueta deseas buscar. Ej: *#r34 cat_girl*' }, { quoted: m });
             }
-
+            
             try {
+
                 await sock.sendMessage(from, { text: '🔍 Buscando en la API...' }, { quoted: m });
 
                 // Credenciales integradas directamente en la URL
@@ -1174,6 +1178,14 @@ async function connectToWhatsApp() {
             return await sock.sendMessage(from, { text: `✅ ¡Recordatorio programado! Te avisaré ${tiempoTextoMostrar} (ID: \`${resultado.insertedId}\`).` }, { quoted: m });
         }
 
+        
+
+
+
+
+
+
+
         if (command === 'kill' || command === 'ban') {
             if (!from.endsWith('@g.us')) return await sock.sendMessage(from, { text: '⚠️ Solo grupos.' }, { quoted: m });
             try {
@@ -1194,6 +1206,28 @@ async function connectToWhatsApp() {
             } catch { await sock.sendMessage(from, { text: '❌ No se pudo expulsar.' }, { quoted: m }); }
         }
 
+        if (command === 'nsfw' || command === 'modohorny') {
+            if (!esOwner(sender)) return;
+            const estado = args[0]?.toLowerCase();
+            
+            if (estado === 'off' || estado === 'apagar') {
+                nsfwHabilitado = false;
+                return await sock.sendMessage(from, { text: '🔒 Comandos +18 *desactivados* globalmente.' }, { quoted: m });
+            } else if (estado === 'on' || estado === 'encender') {
+                nsfwHabilitado = true;
+                return await sock.sendMessage(from, { text: '🔓 Comandos +18 *activados* globalmente.' }, { quoted: m });
+            } else {
+                // Panel interactivo de control
+                const panelText = `🎛️ *PANEL DE CONTROL NSFW* 🎛️\n\n` +
+                    `Estado actual: *${nsfwHabilitado ? 'ACTIVADO 🟢' : 'DESACTIVADO 🔴'}*\n\n` +
+                    `Selecciona una opción:\n` +
+                    `👉 Escribe *#nsfw on* para encender\n` +
+                    `👉 Escribe *#nsfw off* para apagar`;
+                return await sock.sendMessage(from, { text: panelText }, { quoted: m });
+            }
+        }
+
+ 
         if (command === 'consumo' || command === 'stats' || command === 'recursos') {
             if (!esOwner(sender)) return;
             const memUsadaByBot = process.memoryUsage().rss / (1024 * 1024);
