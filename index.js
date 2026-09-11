@@ -715,7 +715,6 @@ async function connectToWhatsApp() {
             return await sock.sendMessage(from, { text: `✅ Voto registrado. (Culpable: ${juicio.votosSi} | Inocente: ${juicio.votosNo})` }, { quoted: m });
         }
 
-
         if (command === 'ia' || command === 'gemini') {
             const pregunta = args.join(' ');
             if (!pregunta) {
@@ -731,9 +730,9 @@ async function connectToWhatsApp() {
 
                 await sock.sendMessage(from, { text: '🧠 Pensando...' }, { quoted: m });
 
-                // 2. Creamos la sesión de chat con el SDK oficial y pasamos el historial previo
+                // 2. Creamos la sesión de chat usando el modelo correcto
                 const chat = ai.chats.create({
-                    model: 'gemini-2.5-flash',
+                    model: 'gemini-3.6-flash',
                     history: historial
                 });
 
