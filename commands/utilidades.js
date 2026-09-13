@@ -738,7 +738,7 @@ async function handleCommand(ctx) {
 
     if (command === 'partidos' || command === 'futbol') {
         try {
-            await sock.sendMessage(from, { text: '⚽ Buscando partidos en vivo...' }, { quoted: m });
+            await sock.sendMessage(from, { text: '⚽ Buscando partidos destacados en vivo...' }, { quoted: m });
 
             const apiKey = process.env.API_FOOTBALL_KEY;
             if (!apiKey) {
@@ -746,40 +746,58 @@ async function handleCommand(ctx) {
                 return true;
             }
 
-            // Endpoint de API-Football v3 para partidos en vivo (live=all)
+            // Obtenemos absolutamente todos los partidos en vivo
             const response = await axios.get('https://v3.football.api-sports.io/fixtures?live=all', {
                 headers: {
                     'x-apisports-key': apiKey
                 }
             });
 
-            const partidos = response.data.response;
+            const todosLosPartidos = response.data.response;
 
-            if (!partidos || partidos.length === 0) {
+            if (!todosLosPartidos || todosLosPartidos.length === 0) {
                 await sock.sendMessage(from, { text: 'ℹ️ No hay partidos jugándose en este momento.' }, { quoted: m });
                 return true;
             }
 
-            // Limitamos a 15 partidos para no hacer un mensaje gigante en WhatsApp
-            const partidosMostrados = partidos.slice(0, 15);
-            let textoPartidos = '🔴 *PARTIDOS EN VIVO* 🔴\n\n';
+            // ----------------------------------------------------
+            // 🛑 NUEVO FILTRO: Ligas de interés (Perú + Europa + Internacionales)
+            // Puedes agregar 'Argentina', 'Brazil', etc., a esta lista si quieres.
+            // ----------------------------------------------------
+            const paisesImportantes = [
+                'Peru', 'England', 'Spain', 'Germany', 'Italy', 
+                'France', 'Netherlands', 'Portugal', 'Europe', 
+                'South-America', 'World'
+            ];
+
+            // Filtramos la lista para quedarnos solo con lo que nos importa
+            const partidosFiltro = todosLosPartidos.filter(p => paisesImportantes.includes(p.league.country));
+
+            if (partidosFiltro.length === 0) {
+                await sock.sendMessage(from, { text: 'ℹ️ Hay partidos en vivo ahora mismo, pero ninguno de Perú o de las ligas principales de Europa.' }, { quoted: m });
+                return true;
+            }
+
+            // Limitamos a 15 para no saturar
+            const partidosMostrados = partidosFiltro.slice(0, 15);
+            let textoPartidos = '🔴 *PARTIDOS EN VIVO (Destacados)* 🔴\n\n';
 
             partidosMostrados.forEach(p => {
                 const homeTeam = p.teams.home.name;
                 const awayTeam = p.teams.away.name;
                 const homeScore = p.goals.home ?? 0;
                 const awayScore = p.goals.away ?? 0;
-                // Si el minuto es null (ej. medio tiempo), usa el estado corto (HT, FT, etc.)
                 const minuto = p.fixture.status.elapsed ? `${p.fixture.status.elapsed}'` : p.fixture.status.short;
                 const liga = p.league.name;
+                const pais = p.league.country; // Agregamos el país para que se vea mejor
 
-                textoPartidos += `🏆 *${liga}*\n`;
+                textoPartidos += `🏆 *${liga}* (${pais})\n`;
                 textoPartidos += `⏱️ ${minuto} | 🛡️ ${homeTeam} *${homeScore} - ${awayScore}* ${awayTeam}\n`;
                 textoPartidos += `────────────────\n`;
             });
 
-            if (partidos.length > 15) {
-                textoPartidos += `\n_...y ${partidos.length - 15} partidos más._`;
+            if (partidosFiltro.length > 15) {
+                textoPartidos += `\n_...y ${partidosFiltro.length - 15} partidos destacados más._`;
             }
 
             await sock.sendMessage(from, { text: textoPartidos }, { quoted: m });
@@ -787,7 +805,7 @@ async function handleCommand(ctx) {
 
         } catch (err) {
             console.error('Error en API-Football:', err.message);
-            await sock.sendMessage(from, { text: '❌ Ocurrió un error al consultar los marcadores. Verifica tu API Key.' }, { quoted: m });
+            await sock.sendMessage(from, { text: '❌ Ocurrió un error al consultar los marcadores. Verifica tu API Key o los límites de tu plan.' }, { quoted: m });
             return true;
         }
     }
