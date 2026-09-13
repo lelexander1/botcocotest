@@ -103,62 +103,68 @@ async function handleCommand(ctx) {
     }
 
     if (command === 'menu' || command === 'help') {
-        const menu = `⚡ *PANEL PRINCIPAL - CocoBot* ⚡\n` +
-            `────────────────────────\n` +
-            `👤 *Creado por:* Alencito/Gabo\n` +
-            `🚀 *Estado:* Online 24/7 \n` +
-            `────────────────────────\n\n` +
-            `🎮 *¡ÚNETE A NUESTRA COMUNIDAD!* 🎮\n` +
-            `👉 *Discord Oficial:* https://discord.gg/mDQfz3UKbG\n\n` +
-            `────────────────────────\n\n` +
-            `📌 *GUÍA DE COMANDOS*\n\n` +
-            `🤖 *IA y Utilidades:*\n` +
-            `  *#ia [texto]* - Habla con la inteligencia artificial\n` +
-            `  *#voz [texto]* - Convierte texto a nota de voz\n` +
-            `  *#crypto [moneda]* - Precios en tiempo real\n` +
-            `  *#partidos / #futbol [país]* - ⚽ Marcadores en vivo\n` +
-            `  *#chistes / #chistenegro* - Humor aleatorio\n` +
-            `  *#imagen [tema]* - Busca una foto aleatoria\n\n` +
-            `🎭 *Reacciones y Rol:*\n` +
-            `  _Úsalos solos o mencionando a alguien._\n` +
-            `  ❤️ *Cariño:* #hug, #kiss, #pat, #cuddle, #love\n` +
-            `  😡 *Agresivos:* #slap, #punch, #kill, #bite, #step\n` +
-            `  😢 *Emociones:* #cry, #sad, #happy, #angry, #shy\n` +
-            `  🤪 *Acciones:* #dance, #eat, #sleep, #gaming, #bath\n\n` +
-            `🔞 *NSFW (Si el admin lo activa):*\n` +
-            `  *#r34 [tag]* - Buscar imágenes (Ej: #r34 cat_girl)\n` +
-            `  *#trivia18* - Preguntas picantes\n\n` +
-            `👤 *Perfil y Redes:*\n` +
-            `  *#perfil [@us]* - Muestra tu tarjeta con foto\n` +
-            `  *#edad / #genero / #frase* - Edita tu tarjeta\n` +
-            `  *#facebook, #instagram* - Añade tus redes\n` +
-            `  *#still [texto/ver/borrar]* - Banco de notas\n\n` +
-            `💍 *Social y Parejas:*\n` +
-            `  *#casarse [@us] / #aceptar* - Matrimonio\n` +
-            `  *#divorcio [@us] [tipo]* - normal, juicio o encuesta\n` +
-            `  *#cumples / #cumple DD/MM* - Cumpleaños\n\n` +
-            `💰 *Economía y Tienda:*\n` +
-            `  *#bal* - Mira cuántos soles tienes\n` +
-            `  *#work / #daily* - Trabaja (8h) o cobra diario\n` +
-            `  *#crime* - Roba (15m, riesgo de multa)\n` +
-            `  *#apostar / #ruleta / #slots* - Multiplica tus soles\n` +
-            `  *#yapear [monto] [@us]* - Envía dinero\n` +
-            `  *#topricos* - Ranking de millonarios\n` +
-            `  *#tienda / #comprar [item]* - Gasta tus soles\n\n` +
-            `⚖️ *Moderación y Justicia:*\n` +
-            `  *#juicio [@us] [monto] [motivo]* - Demanda a alguien\n` +
-            `  *#mutear [@us] [min] / #fianza* - Sistema de cárcel\n` +
-            `  *#nsfw [on/off]* - Activar +18 en el grupo (Solo Admins)\n` +
-            `  *#del* - Responde a un msj para borrarlo\n` +
-            `  *#recordatorio [tiempo] [msj]* - Crea alarmas\n\n` +
-            `🎨 *Multimedia:*\n` +
-            `  *#s* - Convierte foto/video a sticker\n` +
-            `  *#gif [texto]* - Busca un GIF y lo hace sticker\n` +
-            `  *#toimg* - Convierte sticker a imagen`;
+    const menu = `⚡ *PANEL PRINCIPAL - CocoBot* ⚡\n` +
+        `────────────────────────\n` +
+        `👤 *Creado por:* Alencito/Gabo\n` +
+        `🚀 *Estado:* Online 24/7 \n` +
+        `────────────────────────\n\n` +
+        `🎮 *¡ÚNETE A NUESTRA COMUNIDAD!* 🎮\n` +
+        `👉 *Discord Oficial:* https://discord.gg/mDQfz3UKbG\n\n` +
+        `────────────────────────\n\n` +
+        `📌 *GUÍA DE COMANDOS*\n\n` +
+        `🤖 *IA y Utilidades:*\n` +
+        `   *#ia [texto]* - Habla con la inteligencia artificial\n` +
+        `   *#voz [texto]* - Convierte texto a nota de voz\n` +
+        `   *#crypto [moneda]* - Precios en tiempo real\n` +
+        `   *#partidos / #futbol [país]* - ⚽ Marcadores en vivo\n` +
+        `   *#chistes / #chistenegro* - Humor aleatorio\n` +
+        `   *#imagen [tema]* - Busca una foto aleatoria\n\n` +
+        `🎭 *Reacciones y Rol:*\n` +
+        `   _Úsalos solos o mencionando a alguien._\n` +
+        `   ❤️ *Cariño:* #hug, #kiss, #pat, #cuddle, #love\n` +
+        `   😡 *Agresivos:* #slap, #punch, #kill, #bite, #step\n` +
+        `   😢 *Emociones:* #cry, #sad, #happy, #angry, #shy\n` +
+        `   🤪 *Acciones:* #dance, #eat, #sleep, #gaming, #bath\n\n` +
+        `🔞 *NSFW (Si el admin lo activa):*\n` +
+        `   *#r34 [tag]* - Buscar imágenes (Ej: #r34 cat_girl)\n` +
+        `   *#trivia18* - Preguntas picantes\n\n` +
+        `👤 *Perfil y Redes:*\n` +
+        `   *#perfil [@us]* - Muestra tu tarjeta con foto\n` +
+        `   *#edad / #genero / #frase* - Edita tu tarjeta\n` +
+        `   *#facebook, #instagram* - Añade tus redes\n` +
+        `   *#still [texto/ver/borrar]* - Banco de notas\n\n` +
+        `💍 *Social y Parejas:*\n` +
+        `   *#casarse [@us] / #aceptar* - Matrimonio\n` +
+        `   *#divorcio [@us] [tipo]* - normal, juicio o encuesta\n` +
+        `   *#cumples / #cumple DD/MM* - Cumpleaños\n\n` +
+        `💰 *Economía y Tienda:*\n` +
+        `   *#bal* - Mira cuántos soles tienes\n` +
+        `   *#work / #daily* - Trabaja (8h) o cobra diario\n` +
+        `   *#crime* - Roba (15m, riesgo de multa)\n` +
+        `   *#apostar / #ruleta / #slots* - Multiplica tus soles\n` +
+        `   *#yapear [monto] [@us]* - Envía dinero\n` +
+        `   *#topricos* - Ranking de millonarios\n` +
+        `   *#tienda / #comprar [item]* - Gasta tus soles\n\n` +
+        `🏦 *Sistema de Atracos y Crimen:*\n` +
+        `   *#heist* o *#atraco* - Inicia la planificación de un asalto al banco\n` +
+        `   *#heist unirse* - Únete al equipo (Costo: 1,000 soles)\n` +
+        `   *#heist comenzar* - El líder arranca el golpe de inmediato\n` +
+        `   *#ayudar* / *#abandonar* - Vota durante la crisis del tiroteo\n` +
+        `   *#denuncairrobo* - Denuncia el atraco en los primeros 2 min para arrestar a la banda\n\n` +
+        `⚖️ *Moderación y Justicia:*\n` +
+        `   *#juicio [@us] [monto] [motivo]* - Demanda a alguien\n` +
+        `   *#mutear [@us] [min] / #fianza* - Sistema de cárcel\n` +
+        `   *#nsfw [on/off]* - Activar +18 en el grupo (Solo Admins)\n` +
+        `   *#del* - Responde a un msj para borrarlo\n` +
+        `   *#recordatorio [tiempo] [msj]* - Crea alarmas\n\n` +
+        `🎨 *Multimedia:*\n` +
+        `   *#s* - Convierte foto/video a sticker\n` +
+        `   *#gif [texto]* - Busca un GIF y lo hace sticker\n` +
+        `   *#toimg* - Convierte sticker a imagen`;
 
-        await sock.sendMessage(from, { text: menu }, { quoted: m });
-        return true;
-    }
+    await sock.sendMessage(from, { text: menu }, { quoted: m });
+    return true;
+}
 
     if (command === 'gif') {
         const query = args.join(' ') || 'random';
@@ -638,21 +644,26 @@ async function handleCommand(ctx) {
             `📊 *Mensajes:* ${statsData.messageCount || 0}\n` +
             (redesTxt ? `\n🌐 *REDES SOCIALES:*\n${redesTxt}` : '');
 
-        // INTENTO DE OBTENER LA FOTO DE PERFIL DE WHATSAPP
-        let pfpUrl;
-        try {
-            pfpUrl = await sock.profilePictureUrl(target, 'image');
-        } catch (err) {
-            pfpUrl = null; // Si no tiene foto o la tiene oculta por privacidad
-        }
-
         const mentions = [target, ...parejas].filter(Boolean);
 
-        // Si encontramos la foto, enviamos la imagen con el texto de pie de foto
-        if (pfpUrl) {
-            await sock.sendMessage(from, { image: { url: pfpUrl }, caption: perfilTxt, mentions: mentions }, { quoted: m });
-        } else {
-            // Si no hay foto, enviamos solo el texto clásico
+        // Intento seguro de obtener la foto de perfil con manejo de errores limpio
+        let pfpUrl = null;
+        try {
+            pfpUrl = await sock.profilePictureUrl(target, 'image').catch(() => null);
+        } catch (err) {
+            pfpUrl = null;
+        }
+
+        try {
+            if (pfpUrl) {
+                // Si logra obtener una URL válida de imagen
+                await sock.sendMessage(from, { image: { url: pfpUrl }, caption: perfilTxt, mentions: mentions }, { quoted: m });
+            } else {
+                // Si no tiene foto o falló la consulta, enviamos solo texto garantizado
+                await sock.sendMessage(from, { text: perfilTxt, mentions: mentions }, { quoted: m });
+            }
+        } catch (sendErr) {
+            console.error('Error enviando perfil con imagen, recurriendo a texto plano:', sendErr);
             await sock.sendMessage(from, { text: perfilTxt, mentions: mentions }, { quoted: m });
         }
 

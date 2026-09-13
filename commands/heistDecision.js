@@ -2,11 +2,14 @@ const { heistSessions } = require('./heist');
 
 async function handleCommand(ctx) {
     const { sock, m, from, sender, command, usersCollection, economyCollection } = ctx;
+    const db = usersCollection || economyCollection;
 
     let session = heistSessions.get(from);
 
-    if (session && session.fase === 'decision_herido') {
-        // Validar que el usuario sea parte del equipo y NO sea el herido
+    if (!session) return false;
+
+    // 1. FASE DE VOTACIÓN: AYUDAR O ABANDONAR AL COMPAÑERO HERIDO
+    if (session.fase === 'decision_herido') {
         if (!session.participantes.includes(sender)) {
             return false; 
         }
@@ -33,20 +36,54 @@ async function handleCommand(ctx) {
                 mentions: [sender]
             }, { quoted: m });
 
-            // Si ya votaron todos los miembros sanos, cerramos la votación de inmediato
             if (votosActuales >= totalVotosNecesarios) {
                 clearTimeout(session.votacionTimer);
-                await finalizarVotacionHeist(sock, from, session, usersCollection || economyCollection);
+                await finalizarVotacionHeist(sock, from, session, db);
             }
 
             return true;
         }
     }
 
+    // 2. FASE DE DENUNCIA: #denuncairrobo (2 MINUTOS POST-ROBO)
+    if (session.fase === 'esperando_denuncia') {
+        if (command === 'denuncairrobo' || command === 'denunciar') {
+            clearTimeout(session.denunciaTimer);
+            heistSessions.delete(from);
+
+            try {
+                const fianza = 2500; 
+
+                let mensaje = `👮🚨 *¡OPERATIVO POLICIAL EXITOSO!* \n\n`;
+                mensaje += `📢 ¡@${sender.split('@')[0]} denunció el robo a tiempo! La policía interceptó a la banda.\n\n`;
+                mensaje += `⚖️ Todos los implicados fueron arrestados y deben pagar una fianza de *${fianza} soles* para salir libres. ¡Perdieron la inversión y fueron multados!`;
+
+                if (db) {
+                    for (const participante of session.participantes) {
+                        await db.updateOne(
+                            { jid: participante },
+                            { $inc: { soles: -fianza } },
+                            { upsert: true }
+                        );
+                    }
+                }
+
+                const mentions = [...session.participantes, sender];
+                await sock.sendMessage(from, { text: mensaje, mentions }, { quoted: m });
+                return true;
+
+            } catch (err) {
+                console.error('Error procesando denuncia:', err);
+                await sock.sendMessage(from, { text: '❌ Ocurrió un error al procesar la denuncia policial.' }, { quoted: m });
+                return true;
+            }
+        }
+    }
+
     return false;
 }
 
-// Función que calcula la votación y reparte los premios
+// Función que calcula la votación de ayuda/abandono y reparte los premios con seguridad
 async function finalizarVotacionHeist(sock, from, session, dbCollection) {
     heistSessions.delete(from);
 
@@ -58,7 +95,6 @@ async function finalizarVotacionHeist(sock, from, session, dbCollection) {
         else votosAbandonar++;
     }
 
-    // Gana la opción con más votos. Si hay empate, gana 'abandonar'
     const decisionGanadora = votosAyudar >= votosAbandonar ? 'ayudar' : 'abandonar';
     const totalJugadores = session.participantes.length;
     let mensajeFinal = '';
@@ -86,20 +122,23 @@ async function finalizarVotacionHeist(sock, from, session, dbCollection) {
         }
     }
 
-    // Repartir el dinero en la base de datos
-    if (dbCollection) {
-        for (const participante of session.participantes) {
-            if (decisionGanadora === 'abandonar' && participante === session.usuarioHerido) {
-                continue; // El abandonado no gana nada
-            }
-            if (gananciaPorPersona > 0) {
-                await dbCollection.updateOne(
-                    { jid: participante },
-                    { $inc: { soles: gananciaPorPersona } },
-                    { upsert: true }
-                );
+    try {
+        if (dbCollection) {
+            for (const participante of session.participantes) {
+                if (decisionGanadora === 'abandonar' && participante === session.usuarioHerido) {
+                    continue; 
+                }
+                if (gananciaPorPersona > 0) {
+                    await dbCollection.updateOne(
+                        { jid: participante },
+                        { $inc: { soles: gananciaPorPersona } },
+                        { upsert: true }
+                    );
+                }
             }
         }
+    } catch (err) {
+        console.error('Error al actualizar base de datos en votación heist:', err);
     }
 
     const mentions = [...session.participantes];
