@@ -1,5 +1,5 @@
 async function handleCommand(ctx) {
-    const { sock, m, from, sender, args, command, usersCollection, state, deps, esOwner } = ctx;
+    const { sock, m, from, sender, args, command, usersCollection, groupsCollection, state, deps, esOwner } = ctx;
     const { obtenerGifAleatorio } = deps;
 
     if (command === 'del' || command === 'delete') {
@@ -297,19 +297,34 @@ async function handleCommand(ctx) {
     }
 
     if (command === 'nsfw' || command === 'modohorny') {
-        if (!esOwner(sender)) return true;
-        const estado = args[0]?.toLowerCase();
+        if (!from.endsWith('@g.us')) {
+            await sock.sendMessage(from, { text: '⚠️ Este comando solo se puede usar dentro de grupos.' }, { quoted: m });
+            return true;
+        }
 
+        const meta = await sock.groupMetadata(from);
+        const admins = meta.participants.filter(p => p.admin !== null).map(p => p.id);
+        
+        if (!admins.includes(sender) && !esOwner(sender)) {
+            await sock.sendMessage(from, { text: '⚠️ Solo los administradores de este grupo pueden cambiar la configuración NSFW.' }, { quoted: m });
+            return true;
+        }
+
+        const estado = args[0]?.toLowerCase();
+        
         if (estado === 'off' || estado === 'apagar') {
-            state.nsfwHabilitado = false;
-            await sock.sendMessage(from, { text: '🔒 Comandos +18 *desactivados* globalmente.' }, { quoted: m });
+            await groupsCollection.updateOne({ groupId: from }, { $set: { nsfw: false } }, { upsert: true });
+            await sock.sendMessage(from, { text: '🔒 Comandos +18 *desactivados* para este grupo.' }, { quoted: m });
         } else if (estado === 'on' || estado === 'encender') {
-            state.nsfwHabilitado = true;
-            await sock.sendMessage(from, { text: '🔓 Comandos +18 *activados* globalmente.' }, { quoted: m });
+            await groupsCollection.updateOne({ groupId: from }, { $set: { nsfw: true } }, { upsert: true });
+            await sock.sendMessage(from, { text: '🔓 Comandos +18 *activados* para este grupo.' }, { quoted: m });
         } else {
-            const panelText = `🎛️ *PANEL DE CONTROL NSFW* 🎛️\n\n` +
-                `Estado actual: *${state.nsfwHabilitado ? 'ACTIVADO 🟢' : 'DESACTIVADO 🔴'}*\n\n` +
-                `Selecciona una opción:\n` +
+            const gData = await groupsCollection.findOne({ groupId: from });
+            const isOn = gData?.nsfw || false;
+            
+            const panelText = `🎛️ *PANEL NSFW DEL GRUPO* 🎛️\n\n` +
+                `Estado actual: *${isOn ? 'ACTIVADO 🟢' : 'DESACTIVADO 🔴'}*\n\n` +
+                `Opciones (Solo Admins):\n` +
                 `👉 Escribe *#nsfw on* para encender\n` +
                 `👉 Escribe *#nsfw off* para apagar`;
             await sock.sendMessage(from, { text: panelText }, { quoted: m });
@@ -317,7 +332,7 @@ async function handleCommand(ctx) {
         return true;
     }
 
-    return false;
-}
+    return false; // Si no es ningún comando de moderación, pasa al siguiente archivo
+} // Cierra la función handleCommand
 
 module.exports = { handleCommand };

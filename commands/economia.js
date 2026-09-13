@@ -20,34 +20,49 @@ async function handleCommand(ctx) {
     }
 
     if (['work', 'w'].includes(command)) {
-        const limit = 8 * 60 * 60 * 1000;
-        const key = `${sender}-${command}`;
-        const last = state.cooldowns.get(key) || 0;
-        const tiempoTranscurrido = Date.now() - last;
+        const limit = 8 * 60 * 60 * 1000; // 8 horas en milisegundos
+        
+        // 1. Buscamos al usuario en la base de datos
+        const uData = await usersCollection.findOne({ jid: sender });
+        const lastWork = uData?.lastWork || 0;
+        const tiempoTranscurrido = Date.now() - lastWork;
 
+        // 2. Verificamos si ya pasó el tiempo
         if (tiempoTranscurrido < limit) {
             const horasRestantes = ((limit - tiempoTranscurrido) / (1000 * 60 * 60)).toFixed(1);
-            await sock.sendMessage(from, { text: `⏳ Estás muy cansado. Debes esperar *${horasRestantes} horas* para volver a trabajar con #${command}.` }, { quoted: m });
+            await sock.sendMessage(from, { text: `⏳ Estás muy cansado. Debes esperar *${horasRestantes} horas* para volver a trabajar.` }, { quoted: m });
             return true;
         }
-        state.cooldowns.set(key, Date.now());
-        const earned = Math.floor(Math.random() * 2000) + 500;
-        await usersCollection.updateOne({ jid: sender }, { $inc: { soles: earned } }, { upsert: true });
+
+        // 3. Generamos el pago y guardamos la nueva fecha en MongoDB
+        const earned = Math.floor(Math.random() * 2000) + 500; 
+        await usersCollection.updateOne(
+            { jid: sender }, 
+            { 
+                $inc: { soles: earned }, 
+                $set: { lastWork: Date.now() } 
+            }, 
+            { upsert: true }
+        );
+
         await sock.sendMessage(from, { text: `💼 Cumpliste tu turno laboral de 8 horas y ganaste *🪙 ${earned.toLocaleString()} soles*. ¡Buen trabajo!` }, { quoted: m });
         return true;
     }
 
-    if (command === 'crime' || command === 'criminal' || command === 'delito' || command === 'crimen') {
-        const keyCooldown = `${sender}-crime`;
-        const ultimaVez = state.cooldowns.get(keyCooldown) || 0;
-        const cooldownTiempo = 15 * 60 * 1000;
+    if (['crime', 'criminal', 'delito', 'crimen'].includes(command)) {
+        const limit = 15 * 60 * 1000; // 15 minutos
+        
+        // 1. Buscamos al usuario en la base de datos
+        const uData = await usersCollection.findOne({ jid: sender });
+        const lastCrime = uData?.lastCrime || 0;
+        const tiempoTranscurrido = Date.now() - lastCrime;
 
-        if (Date.now() - ultimaVez < cooldownTiempo) {
-            const minutosFaltantes = Math.ceil((cooldownTiempo - (Date.now() - ultimaVez)) / (1000 * 60));
+        // 2. Verificamos si ya pasó el tiempo
+        if (tiempoTranscurrido < limit) {
+            const minutosFaltantes = Math.ceil((limit - tiempoTranscurrido) / (1000 * 60));
             await sock.sendMessage(from, { text: `🚔 La policía te sigue la pista. Esconde tus huellas y espera *${minutosFaltantes} minutos* para cometer otro delito.` }, { quoted: m });
             return true;
         }
-        state.cooldowns.set(keyCooldown, Date.now());
 
         const escenarios = [
             { exito: true, texto: "🏦 Robaste un banco local con éxito y no fuiste descubierto.", premio: 4500 },
@@ -60,15 +75,23 @@ async function handleCommand(ctx) {
         ];
 
         const evento = escenarios[Math.floor(Math.random() * escenarios.length)];
-        const uData = await usersCollection.findOne({ jid: sender });
         const saldoActual = uData?.soles || 0;
 
+        // 3. Actualizamos el saldo y registramos la fecha del crimen en MongoDB
         if (evento.exito) {
-            await usersCollection.updateOne({ jid: sender }, { $inc: { soles: evento.premio } }, { upsert: true });
+            await usersCollection.updateOne(
+                { jid: sender }, 
+                { $inc: { soles: evento.premio }, $set: { lastCrime: Date.now() } }, 
+                { upsert: true }
+            );
             await sock.sendMessage(from, { text: `🟢 *¡GOLPE EXITOSO!*\n\n@${sender.split('@')[0]} -> ${evento.texto}\n💰 *Ganancia:* +🪙 ${evento.premio.toLocaleString()} soles`, mentions: [sender] }, { quoted: m });
         } else {
             const nuevoSaldo = Math.max(-50, saldoActual - evento.multa);
-            await usersCollection.updateOne({ jid: sender }, { $set: { soles: nuevoSaldo } }, { upsert: true });
+            await usersCollection.updateOne(
+                { jid: sender }, 
+                { $set: { soles: nuevoSaldo, lastCrime: Date.now() } }, 
+                { upsert: true }
+            );
             await sock.sendMessage(from, { text: `🔴 *¡TE ATRAPARON!*\n\n@${sender.split('@')[0]} -> ${evento.texto}\n💸 *Multa pagada:* -🪙 ${evento.multa.toLocaleString()} soles`, mentions: [sender] }, { quoted: m });
         }
         return true;

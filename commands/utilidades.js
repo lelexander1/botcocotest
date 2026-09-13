@@ -116,18 +116,22 @@ async function handleCommand(ctx) {
             `  *#ia [texto]* - Habla con la inteligencia artificial\n` +
             `  *#voz [texto]* - Convierte texto a nota de voz\n` +
             `  *#crypto [moneda]* - Precios en tiempo real\n` +
+            `  *#partidos / #futbol [país]* - ⚽ Marcadores en vivo\n` +
             `  *#chistes / #chistenegro* - Humor aleatorio\n` +
             `  *#imagen [tema]* - Busca una foto aleatoria\n\n` +
-            `🎭 *Reacciones y Rol (¡NUEVOS!):*\n` +
-            `  _Menciona a alguien o úsalos solos para expresarte con un GIF animado._\n` +
+            `🎭 *Reacciones y Rol:*\n` +
+            `  _Úsalos solos o mencionando a alguien._\n` +
             `  ❤️ *Cariño:* #hug, #kiss, #pat, #cuddle, #love\n` +
             `  😡 *Agresivos:* #slap, #punch, #kill, #bite, #step\n` +
             `  😢 *Emociones:* #cry, #sad, #happy, #angry, #shy\n` +
             `  🤪 *Acciones:* #dance, #eat, #sleep, #gaming, #bath\n\n` +
+            `🔞 *NSFW (Si el admin lo activa):*\n` +
+            `  *#r34 [tag]* - Buscar imágenes (Ej: #r34 cat_girl)\n` +
+            `  *#trivia18* - Preguntas picantes\n\n` +
             `👤 *Perfil y Redes:*\n` +
-            `  *#perfil [@us]* - Muestra tu tarjeta (¡ahora con tu foto!)\n` +
+            `  *#perfil [@us]* - Muestra tu tarjeta con foto\n` +
             `  *#edad / #genero / #frase* - Edita tu tarjeta\n` +
-            `  *#facebook, #instagram, etc.* - Añade tus redes\n` +
+            `  *#facebook, #instagram* - Añade tus redes\n` +
             `  *#still [texto/ver/borrar]* - Banco de notas\n\n` +
             `💍 *Social y Parejas:*\n` +
             `  *#casarse [@us] / #aceptar* - Matrimonio\n` +
@@ -136,7 +140,7 @@ async function handleCommand(ctx) {
             `💰 *Economía y Tienda:*\n` +
             `  *#bal* - Mira cuántos soles tienes\n` +
             `  *#work / #daily* - Trabaja (8h) o cobra diario\n` +
-            `  *#crime* - Roba un banco (¡riesgo de multa!)\n` +
+            `  *#crime* - Roba (15m, riesgo de multa)\n` +
             `  *#apostar / #ruleta / #slots* - Multiplica tus soles\n` +
             `  *#yapear [monto] [@us]* - Envía dinero\n` +
             `  *#topricos* - Ranking de millonarios\n` +
@@ -144,6 +148,7 @@ async function handleCommand(ctx) {
             `⚖️ *Moderación y Justicia:*\n` +
             `  *#juicio [@us] [monto] [motivo]* - Demanda a alguien\n` +
             `  *#mutear [@us] [min] / #fianza* - Sistema de cárcel\n` +
+            `  *#nsfw [on/off]* - Activar +18 en el grupo (Solo Admins)\n` +
             `  *#del* - Responde a un msj para borrarlo\n` +
             `  *#recordatorio [tiempo] [msj]* - Crea alarmas\n\n` +
             `🎨 *Multimedia:*\n` +
@@ -365,9 +370,13 @@ async function handleCommand(ctx) {
     }
 
     if (command === 'r34' || command === 'rule34') {
-        if (!state.nsfwHabilitado) {
-            await sock.sendMessage(from, { text: '❌ Los comandos +18 se encuentran desactivados temporalmente por el administrador.' }, { quoted: m });
-            return true;
+        // Candado por Grupo
+        if (from.endsWith('@g.us')) {
+            const gData = await groupsCollection.findOne({ groupId: from });
+            if (!gData?.nsfw) {
+                await sock.sendMessage(from, { text: '❌ Los comandos +18 están desactivados en este grupo.\nUn administrador debe activar el modo usando: *#nsfw on*' }, { quoted: m });
+                return true;
+            }
         }
 
         const queryTag = args.join('_');
@@ -375,7 +384,7 @@ async function handleCommand(ctx) {
             await sock.sendMessage(from, { text: '⚠️ Escribe qué etiqueta deseas buscar. Ej: *#r34 cat_girl*' }, { quoted: m });
             return true;
         }
-
+        
         try {
             await sock.sendMessage(from, { text: '🔍 Buscando en la API...' }, { quoted: m });
 
@@ -798,6 +807,108 @@ async function handleCommand(ctx) {
 
             if (partidosFiltro.length > 15) {
                 textoPartidos += `\n_...y ${partidosFiltro.length - 15} partidos destacados más._`;
+            }
+
+            await sock.sendMessage(from, { text: textoPartidos }, { quoted: m });
+            return true;
+
+        } catch (err) {
+            console.error('Error en API-Football:', err.message);
+            await sock.sendMessage(from, { text: '❌ Ocurrió un error al consultar los marcadores. Verifica tu API Key o los límites de tu plan.' }, { quoted: m });
+            return true;
+        }
+    }
+
+    if (command === 'partidos' || command === 'futbol') {
+        try {
+            const paisBuscado = args.join(' ').toLowerCase();
+
+            // Diccionario para traducir de español al inglés que usa la API
+            const traducciones = {
+                'perú': 'Peru', 'peru': 'Peru',
+                'españa': 'Spain', 'espana': 'Spain',
+                'inglaterra': 'England',
+                'alemania': 'Germany',
+                'italia': 'Italy',
+                'francia': 'France',
+                'argentina': 'Argentina',
+                'brasil': 'Brazil',
+                'mexico': 'Mexico', 'méxico': 'Mexico',
+                'colombia': 'Colombia',
+                'chile': 'Chile',
+                'uruguay': 'Uruguay',
+                'ecuador': 'Ecuador',
+                'europa': 'Europe', // Para Champions / Europa League
+                'mundo': 'World',   // Para Mundiales o Amistosos Internacionales
+                'sudamerica': 'South-America', 'sudamérica': 'South-America' // Libertadores
+            };
+
+            await sock.sendMessage(from, { text: `⚽ Buscando partidos en vivo...` }, { quoted: m });
+
+            const apiKey = process.env.API_FOOTBALL_KEY;
+            if (!apiKey) {
+                await sock.sendMessage(from, { text: '⚠️ La API Key de fútbol no está configurada.' }, { quoted: m });
+                return true;
+            }
+
+            // Obtenemos todos los partidos en vivo
+            const response = await axios.get('https://v3.football.api-sports.io/fixtures?live=all', {
+                headers: { 'x-apisports-key': apiKey }
+            });
+
+            const todosLosPartidos = response.data.response;
+
+            if (!todosLosPartidos || todosLosPartidos.length === 0) {
+                await sock.sendMessage(from, { text: 'ℹ️ No hay partidos jugándose en este momento.' }, { quoted: m });
+                return true;
+            }
+
+            let partidosFiltro = [];
+            let titulo = '';
+
+            // Si el usuario especificó un país (ej. #futbol perú)
+            if (paisBuscado) {
+                const paisApi = traducciones[paisBuscado] || paisBuscado; // Traduce o usa lo que escribió
+                partidosFiltro = todosLosPartidos.filter(p => p.league.country.toLowerCase() === paisApi.toLowerCase());
+                
+                if (partidosFiltro.length === 0) {
+                    await sock.sendMessage(from, { text: `ℹ️ No se encontraron partidos en vivo para: *${paisBuscado.toUpperCase()}*.` }, { quoted: m });
+                    return true;
+                }
+                titulo = `🔴 *PARTIDOS EN VIVO: ${paisApi.toUpperCase()}* 🔴\n\n`;
+            } 
+            // Si el usuario solo escribió #futbol (sin país), mostramos los destacados
+            else {
+                const paisesImportantes = ['Peru', 'England', 'Spain', 'Germany', 'Italy', 'France', 'Europe', 'South-America', 'World'];
+                partidosFiltro = todosLosPartidos.filter(p => paisesImportantes.includes(p.league.country));
+                
+                if (partidosFiltro.length === 0) {
+                    await sock.sendMessage(from, { text: 'ℹ️ No hay partidos destacados ahora. Puedes buscar un país específico así: *#futbol peru*' }, { quoted: m });
+                    return true;
+                }
+                titulo = '🔴 *PARTIDOS EN VIVO (Destacados)* 🔴\n\n';
+            }
+
+            // Limitamos a 15 partidos para no hacer un mensaje gigante
+            const partidosMostrados = partidosFiltro.slice(0, 15);
+            let textoPartidos = titulo;
+
+            partidosMostrados.forEach(p => {
+                const homeTeam = p.teams.home.name;
+                const awayTeam = p.teams.away.name;
+                const homeScore = p.goals.home ?? 0;
+                const awayScore = p.goals.away ?? 0;
+                const minuto = p.fixture.status.elapsed ? `${p.fixture.status.elapsed}'` : p.fixture.status.short;
+                const liga = p.league.name;
+                const pais = p.league.country;
+
+                textoPartidos += `🏆 *${liga}* (${pais})\n`;
+                textoPartidos += `⏱️ ${minuto} | 🛡️ ${homeTeam} *${homeScore} - ${awayScore}* ${awayTeam}\n`;
+                textoPartidos += `────────────────\n`;
+            });
+
+            if (partidosFiltro.length > 15) {
+                textoPartidos += `\n_...y ${partidosFiltro.length - 15} partidos más._`;
             }
 
             await sock.sendMessage(from, { text: textoPartidos }, { quoted: m });
