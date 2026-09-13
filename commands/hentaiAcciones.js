@@ -38,8 +38,6 @@ async function handleCommand(ctx) {
 
         try {
             const randomPid = Math.floor(Math.random() * 20);
-
-            // Añadimos la etiqueta 'animated' junto a la búsqueda para priorizar clips o GIFs en la API
             const queryTags = `${command} animated`;
 
             const response = await axios.get('https://api.rule34.xxx/index.php', {
@@ -60,15 +58,16 @@ async function handleCommand(ctx) {
             const posts = response.data;
 
             if (posts && Array.isArray(posts) && posts.length > 0) {
-                // Filtramos estrictamente para que la URL termine en .gif
                 const postsValidos = posts.filter(p => p.file_url && p.file_url.toLowerCase().endsWith('.gif'));
                 
                 if (postsValidos.length > 0) {
                     const randomPost = postsValidos[Math.floor(Math.random() * postsValidos.length)];
                     const gifUrl = randomPost.file_url;
 
+                    // Enviamos como video con gifPlayback para forzar la reproducción automática en bucle en el celular
                     await sock.sendMessage(from, { 
-                        image: { url: gifUrl }, // WhatsApp procesa y reproduce los .gif correctamente si se envían como imagen animada
+                        video: { url: gifUrl }, 
+                        gifPlayback: true,
                         caption: textoAccion,
                         mentions: mentions
                     }, { quoted: m });
