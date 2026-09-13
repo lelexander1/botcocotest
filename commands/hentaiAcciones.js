@@ -3,10 +3,10 @@ const axios = require('axios');
 async function handleCommand(ctx) {
     const { sock, m, from, sender, args, command, groupsCollection } = ctx;
 
-    // Tus comandos de interacción conectados a E-Hentai
-    const accionesHentai = ['anal', 'paizuri', 'milf', 'tentacles', 'blowjob'];
+    // Comandos habilitados para usar la API de Rule34
+    const accionesRule34 = ['anal', 'paizuri', 'milf', 'tentacles', 'blowjob'];
 
-    if (accionesHentai.includes(command)) {
+    if (accionesRule34.includes(command)) {
         // Candado estricto de NSFW por grupo
         if (from.endsWith('@g.us') && groupsCollection) {
             const gData = await groupsCollection.findOne({ groupId: from });
@@ -23,10 +23,10 @@ async function handleCommand(ctx) {
             return true;
         }
 
-        // Textos de interacción personalizados
+        // Textos personalizados con la estructura que pediste
         let textoAccion = '';
         if (command === 'anal') {
-            textoAccion = `🔥 @${sender.split('@')[0]} le realizó un anal a @${target.split('@')[0]} 🥵🍑`;
+            textoAccion = `🔥 @${sender.split('@')[0]} realizó un anal a @${target.split('@')[0]} 🥵🍑`;
         } else if (command === 'paizuri') {
             textoAccion = `🍈 @${sender.split('@')[0]} recibió un paizuri de parte de @${target.split('@')[0]} 👀💦`;
         } else if (command === 'milf') {
@@ -34,64 +34,51 @@ async function handleCommand(ctx) {
         } else if (command === 'tentacles') {
             textoAccion = `🐙 ¡Los tentáculos atraparon a @${target.split('@')[0]} por sorpresa! (Iniciado por @${sender.split('@')[0]}) 🌀`;
         } else if (command === 'blowjob') {
-            textoAccion = `👅 @${sender.split('@')[0]} recibió un buen servicio de parte de @${target.split('@')[0]} 🤤`;
+            textoAccion = `👅 @${sender.split('@')[0]} recibió un servicio de @${target.split('@')[0]} 🤤`;
         }
 
         const mentions = [sender, target];
 
         try {
-            // Mapeo de categorías usando la sintaxis de etiquetas exactas de E-Hentai (ej: f:anal$ o m:anal$)
-            // Aquí puedes tener un conjunto de galerías seguras previamente verificadas para cada tag
-            const bancoGaleriaPorTag = {
-                'anal': [
-                    { gid: 2231376, token: "a7584a5932" },
-                    { gid: 2197090, token: "2f440c5f01" }
-                ],
-                'paizuri': [
-                    { gid: 2924387, token: "aa28f4a72a" }
-                ],
-                'milf': [
-                    { gid: 2043548, token: "bdb0cd9ec2" }
-                ],
-                'tentacles': [
-                    { gid: 2231376, token: "a7584a5932" }
-                ],
-                'blowjob': [
-                    { gid: 2197090, token: "2f440c5f01" }
-                ]
-            };
-
-            const opcionesTag = bancoGaleriaPorTag[command] || bancoGaleriaPorTag['anal'];
-            const seleccion = opcionesTag[Math.floor(Math.random() * opcionesTag.length)];
-
-            // Petición oficial a la API de E-Hentai con el método gdata
-            const metaPayload = {
-                method: "gdata",
-                gidlist: [[seleccion.gid, seleccion.token]],
-                namespace: 1
-            };
-
-            const response = await axios.post('https://api.e-hentai.org/api.php', metaPayload, {
-                headers: { 'Content-Type': 'application/json' }
+            // Petición a la API de Rule34 usando el endpoint oficial de posts filtrando por tags (ej. tag anal)
+            const response = await axios.get('https://api.rule34.xxx/index.php', {
+                params: {
+                    page: 'dapi',
+                    s: 'post',
+                    q: 'index',
+                    tags: command, // Usa directamente el nombre del comando como etiqueta (ej. 'anal')
+                    limit: 50,     // Trae un lote de hasta 50 resultados para elegir uno al azar
+                    json: 1
+                }
             });
 
-            const item = response.data.gmetadata?.[0];
+            const posts = response.data;
 
-            // Enviamos únicamente la imagen de portada y el texto de la acción (sin fuentes ni enlaces)
-            if (item && item.thumb) {
-                await sock.sendMessage(from, { 
-                    image: { url: item.thumb }, 
-                    caption: textoAccion,
-                    mentions: mentions
-                }, { quoted: m });
-            } else {
-                await sock.sendMessage(from, { text: textoAccion, mentions }, { quoted: m });
+            if (posts && Array.isArray(posts) && posts.length > 0) {
+                // Filtramos solo los elementos que tengan una URL de imagen válida y descartamos videos pesados si se prefiere imagen pura
+                const postsValidos = posts.filter(p => p.file_url && !p.file_url.endsWith('.webm') && !p.file_url.endsWith('.mp4'));
+                
+                if (postsValidos.length > 0) {
+                    // Selecciona un post al azar de los resultados obtenidos
+                    const randomPost = postsValidos[Math.floor(Math.random() * postsValidos.length)];
+                    const imageUrl = randomPost.file_url;
+
+                    await sock.sendMessage(from, { 
+                        image: { url: imageUrl }, 
+                        caption: textoAccion,
+                        mentions: mentions
+                    }, { quoted: m });
+                    
+                    return true;
+                }
             }
 
+            // Si por alguna razón no devuelve posts válidos
+            await sock.sendMessage(from, { text: textoAccion, mentions }, { quoted: m });
             return true;
 
         } catch (err) {
-            console.error('Error al conectar con la API de E-Hentai:', err.message);
+            console.error('Error al conectar con la API de Rule34:', err.message);
             await sock.sendMessage(from, { text: textoAccion, mentions }, { quoted: m });
             return true;
         }

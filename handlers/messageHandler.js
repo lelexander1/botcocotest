@@ -3,7 +3,8 @@ const moderacion = require('../commands/moderacion');
 const ia = require('../commands/ia');
 const utilidades = require('../commands/utilidades');
 const tiktok = require('../commands/tiktok');
-const hentaiAcciones = require('../commands/hentaiAcciones'); // <--- 1. Importado aquí
+const hentaiAcciones = require('../commands/hentaiAcciones'); 
+const handlers = [economia, moderacion, ia, utilidades, hentaiAcciones, tiktok];
 
 function createState() {
     return {
