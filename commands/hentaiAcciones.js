@@ -40,39 +40,31 @@ async function handleCommand(ctx) {
         const mentions = [sender, target];
 
         try {
-            // Mapeo con filtros de popularidad/puntuación para asegurar que la API devuelva resultados válidos
-            const tagsMap = {
-                'anal': 'anal score:>=5',
-                'paizuri': 'paizuri score:>=5',
-                'milf': 'milf score:>=5',
-                'tentacles': 'tentacles score:>=5',
-                'blowjob': 'blowjob score:>=5'
-            };
-
-            const queryTag = tagsMap[command] || command;
+            // Generamos un número de página (pid) aleatorio entre 0 y 50 para traer variedad de imágenes distintas
+            const randomPid = Math.floor(Math.random() * 50);
 
             const response = await axios.get('https://api.rule34.xxx/index.php', {
                 params: {
                     page: 'dapi',
                     s: 'post',
                     q: 'index',
-                    tags: queryTag,
+                    tags: command,
+                    pid: randomPid,
                     limit: 100,
                     json: 1
-                }
+                },
+                timeout: 10000 // Timeout de seguridad de 10 segundos
             });
 
             const posts = response.data;
 
             if (posts && Array.isArray(posts) && posts.length > 0) {
-                
+                // Filtramos imágenes válidas (excluyendo videos pesados webm/mp4)
                 const postsValidos = posts.filter(p => p.file_url && !p.file_url.endsWith('.webm') && !p.file_url.endsWith('.mp4'));
                 
                 if (postsValidos.length > 0) {
-
                     const randomPost = postsValidos[Math.floor(Math.random() * postsValidos.length)];
                     const imageUrl = randomPost.file_url;
-                    
 
                     await sock.sendMessage(from, { 
                         image: { url: imageUrl }, 
@@ -84,9 +76,8 @@ async function handleCommand(ctx) {
                 }
             }
 
-            // Si no hay posts válidos, avísanos por consola en lugar de enviar solo texto sin imagen
-            console.log('Rule34 no devolvió posts válidos para la tag:', queryTag);
-            await sock.sendMessage(from, { text: '❌ No se encontró una imagen válida para esta acción.', mentions }, { quoted: m });
+            console.log('Rule34 no devolvió posts válidos para la página aleatoria del tag:', command);
+            await sock.sendMessage(from, { text: '❌ No se encontró una imagen válida en este intento, prueba de nuevo.', mentions }, { quoted: m });
             return true;
 
         } catch (err) {
