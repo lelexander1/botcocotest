@@ -14,6 +14,26 @@ async function handleCommand(ctx) {
                 return true;
             }
 
+            // Validar límites antes de permitir organizar un atraco
+            const hoy = new Date().toISOString().split('T')[0];
+
+            if (db) {
+                // 1. Validar límite global diario del bot (Máximo 10)
+                let contadorGlobal = await db.findOne({ tipo: 'limite_atracos_global', fecha: hoy });
+                if (contadorGlobal && contadorGlobal.total >= 10) {
+                    await sock.sendMessage(from, { text: '🚫 Se ha alcanzado el límite máximo de *10 atracos globales permitidos por día*. ¡Inténtalo mañana!' }, { quoted: m });
+                    return true;
+                }
+
+                // 2. Validar límite personal del usuario que inicia (Máximo 2)
+                let usuarioControl = await db.findOne({ jid: sender, fechaAtraco: hoy });
+                let atracosUsuarioHoy = usuarioControl?.atracosCount || 0;
+                if (atracosUsuarioHoy >= 2) {
+                    await sock.sendMessage(from, { text: '⚠️ Has alcanzado tu límite personal de *2 atracos* para el día de hoy.' }, { quoted: m });
+                    return true;
+                }
+            }
+
             heistSessions.set(from, {
                 lider: sender,
                 participantes: [sender],
@@ -43,7 +63,17 @@ async function handleCommand(ctx) {
                 return true;
             }
 
+            const hoy = new Date().toISOString().split('T')[0];
+
             if (db) {
+                // Validar límite personal para el usuario que se une (Máximo 2)
+                let usuarioControl = await db.findOne({ jid: sender, fechaAtraco: hoy });
+                let atracosUsuarioHoy = usuarioControl?.atracosCount || 0;
+                if (atracosUsuarioHoy >= 2) {
+                    await sock.sendMessage(from, { text: `⚠️ @${sender.split('@')[0]} ya alcanzó su límite de *2 atracos personales* hoy y no puede unirse.`, mentions: [sender] }, { quoted: m });
+                    return true;
+                }
+
                 const userEco = await db.findOne({ jid: sender });
                 const saldo = userEco?.soles || userEco?.wallet || 0;
                 if (saldo < 1000) {
@@ -87,18 +117,34 @@ async function handleCommand(ctx) {
 async function iniciarRoboBanco(sock, from, session, db) {
     const totalJugadores = session.participantes.length;
     session.fase = 'esperando_denuncia';
+    const hoy = new Date().toISOString().split('T')[0];
 
     try {
         if (db) {
+            // Actualizar contadores globales y personales al arrancar oficialmente el atraco
+            await db.updateOne(
+                { tipo: 'limite_atracos_global', fecha: hoy },
+                { $inc: { total: 1 } },
+                { upsert: true }
+            );
+
             for (const participante of session.participantes) {
+                // Descontar inversión inicial
                 await db.updateOne(
                     { jid: participante },
                     { $inc: { soles: -1000 } }
                 );
+
+                // Incrementar contador personal de atracos diarios
+                await db.updateOne(
+                    { jid: participante, fechaAtraco: hoy },
+                    { $inc: { atracosCount: 1 } },
+                    { upsert: true }
+                );
             }
         }
     } catch (err) {
-        console.error('Error descontando inversión:', err);
+        console.error('Error actualizando base de datos o inversión:', err);
     }
 
     const multiplicadorRiesgo = totalJugadores === 1 ? 2.5 : totalJugadores === 2 ? 1.8 : totalJugadores === 3 ? 1.3 : 1.0;
