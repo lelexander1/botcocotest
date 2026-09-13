@@ -1716,15 +1716,15 @@ async function connectToWhatsApp() {
             return await sock.sendMessage(from, { text: `💼 Trabajaste duro y ganaste *🪙 ${earned} soles*.` }, { quoted: m });
         }
 
+
         if (command === 'daily') {
             const u = await usersCollection.findOne({ jid: sender });
             if (u?.lastDaily && Date.now() - u.lastDaily < 86400000) return await sock.sendMessage(from, { text: '⏳ Ya reclamaste tu recompensa diaria.' }, { quoted: m });
             await usersCollection.updateOne({ jid: sender }, { $inc: { soles: 2000 }, $set: { lastDaily: Date.now() } }, { upsert: true });
             return await sock.sendMessage(from, { text: '🎉 ¡Reclamaste tu recompensa diaria de *🪙 2000 soles*!' }, { quoted: m });
         }
-    }); // <-- Este es el cierre correcto del event listener sock.ev.on('messages.upsert', ...)
-} // <-- Cierre de la función connectToWhatsApp()
-
+    });
+}
 
 // 5. FUNCIONES PROGRAMADAS
 // ==========================================
