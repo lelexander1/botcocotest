@@ -111,29 +111,45 @@ async function handleCommand(ctx) {
             `🎮 *¡ÚNETE A NUESTRA COMUNIDAD!* 🎮\n` +
             `👉 *Discord Oficial:* https://discord.gg/mDQfz3UKbG\n\n` +
             `────────────────────────\n\n` +
-            `📌 *COMANDOS Y FUNCIONES:* \n\n` +
-            `🤖 *#ia [texto]*\n   ↳ Inteligencia Artificial con memoria por chat.\n\n` +
-            `🎙️ *#voz [texto]*\n   ↳ Convierte texto a nota de voz.\n\n` +
-            `🪙 *#crypto [moneda]*\n   ↳ Consulta precios en tiempo real.\n\n` +
-            `😂 *#chistes / #chistenegro*\n   ↳ Chistes cortos y humor +18.\n\n` +
-            `🖼️ *#imagen [tema]*\n   ↳ Busca y envía una foto aleatoria.\n\n` +
-            `📦 *#still [texto / ver / borrar]*\n   ↳ Tu banco personal de notas.\n\n` +
-            `👤 *#edad, #frase, #setsticker, #genero*\n   ↳ Configura tu perfil de usuario.\n\n` +
-            `🔗 *#redes sociales (facebook, instagram, etc.)*\n   ↳ Añade enlaces a tu perfil.\n\n` +
-            `👁️ *#perfil [@usuario]*\n   ↳ Muestra tu tarjeta de presentación y soles.\n\n` +
-            `🏆 *#topricos*\n   ↳ Ranking global de los más adinerados.\n\n` +
-            `⏰ *#recordatorio o #recg [tiempo] [msj]*\n   ↳ Programa recordatorios personales o grupales.\n\n` +
-            `🎨 *#s / #gif / #toimg*\n   ↳ Crea stickers, busca GIFs y pasa stickers a foto.\n\n` +
-            `💍 *#casarse [@usuario] / #aceptar*\n   ↳ Sistema de matrimonios.\n\n` +
-            `💔 *#divorcio [@usuario] [tipo]*\n   ↳ Tipos de separación (normal, juicio o encuesta).\n\n` +
-            `⚖️ *#juicio [@usuario] [monto] [motivo]*\n   ↳ Demanda a alguien (tope de deuda de -50 soles).\n\n` +
-            `🎂 *#cumple DD/MM / #cumples*\n   ↳ Registra tu cumpleaños y mira los próximos.\n\n` +
-            `🪙 *#bal / #work / #daily / #flip / #apostar / #ruleta / #slots*\n   ↳ Economía, juegos de azar y trabajo (cada 8h).\n\n` +
-            `🚨 *#crime o #delito*\n   ↳ Delinque o trabaja para ganar dinero (¡o llévate una multa!)\n\n` +
-            `💸 *#yapear [monto] [@usuario]*\n   ↳ Transfiere dinero a otra persona.\n\n` +
-            `🛒 *#tienda / #comprar [item]*\n   ↳ Compra admin, silencios, cambio de nombre (100k) o la bomba final.\n\n` +
-            `🔇 *#mutear [@us] [min] / #fianza*\n   ↳ Sistema de cárcel y fianzas (Solo Admins).\n\n` +
-            `🗑️ *#del / #delete*\n   ↳ Responde a un mensaje para borrarlo.`;
+            `📌 *GUÍA DE COMANDOS*\n\n` +
+            `🤖 *IA y Utilidades:*\n` +
+            `  *#ia [texto]* - Habla con la inteligencia artificial\n` +
+            `  *#voz [texto]* - Convierte texto a nota de voz\n` +
+            `  *#crypto [moneda]* - Precios en tiempo real\n` +
+            `  *#chistes / #chistenegro* - Humor aleatorio\n` +
+            `  *#imagen [tema]* - Busca una foto aleatoria\n\n` +
+            `🎭 *Reacciones y Rol (¡NUEVOS!):*\n` +
+            `  _Menciona a alguien o úsalos solos para expresarte con un GIF animado._\n` +
+            `  ❤️ *Cariño:* #hug, #kiss, #pat, #cuddle, #love\n` +
+            `  😡 *Agresivos:* #slap, #punch, #kill, #bite, #step\n` +
+            `  😢 *Emociones:* #cry, #sad, #happy, #angry, #shy\n` +
+            `  🤪 *Acciones:* #dance, #eat, #sleep, #gaming, #bath\n\n` +
+            `👤 *Perfil y Redes:*\n` +
+            `  *#perfil [@us]* - Muestra tu tarjeta (¡ahora con tu foto!)\n` +
+            `  *#edad / #genero / #frase* - Edita tu tarjeta\n` +
+            `  *#facebook, #instagram, etc.* - Añade tus redes\n` +
+            `  *#still [texto/ver/borrar]* - Banco de notas\n\n` +
+            `💍 *Social y Parejas:*\n` +
+            `  *#casarse [@us] / #aceptar* - Matrimonio\n` +
+            `  *#divorcio [@us] [tipo]* - normal, juicio o encuesta\n` +
+            `  *#cumples / #cumple DD/MM* - Cumpleaños\n\n` +
+            `💰 *Economía y Tienda:*\n` +
+            `  *#bal* - Mira cuántos soles tienes\n` +
+            `  *#work / #daily* - Trabaja (8h) o cobra diario\n` +
+            `  *#crime* - Roba un banco (¡riesgo de multa!)\n` +
+            `  *#apostar / #ruleta / #slots* - Multiplica tus soles\n` +
+            `  *#yapear [monto] [@us]* - Envía dinero\n` +
+            `  *#topricos* - Ranking de millonarios\n` +
+            `  *#tienda / #comprar [item]* - Gasta tus soles\n\n` +
+            `⚖️ *Moderación y Justicia:*\n` +
+            `  *#juicio [@us] [monto] [motivo]* - Demanda a alguien\n` +
+            `  *#mutear [@us] [min] / #fianza* - Sistema de cárcel\n` +
+            `  *#del* - Responde a un msj para borrarlo\n` +
+            `  *#recordatorio [tiempo] [msj]* - Crea alarmas\n\n` +
+            `🎨 *Multimedia:*\n` +
+            `  *#s* - Convierte foto/video a sticker\n` +
+            `  *#gif [texto]* - Busca un GIF y lo hace sticker\n` +
+            `  *#toimg* - Convierte sticker a imagen`;
 
         await sock.sendMessage(from, { text: menu }, { quoted: m });
         return true;
@@ -583,7 +599,7 @@ async function handleCommand(ctx) {
         }
         return true;
     }
-
+    
     if (command === 'perfil' || command === 'verperfil') {
         const target = m.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0] || m.message.extendedTextMessage?.contextInfo?.participant || sender;
         const uData = await usersCollection.findOne({ jid: target }) || {};
@@ -613,7 +629,24 @@ async function handleCommand(ctx) {
             `📊 *Mensajes:* ${statsData.messageCount || 0}\n` +
             (redesTxt ? `\n🌐 *REDES SOCIALES:*\n${redesTxt}` : '');
 
-        await sock.sendMessage(from, { text: perfilTxt, mentions: [target, ...parejas].filter(Boolean) }, { quoted: m });
+        // INTENTO DE OBTENER LA FOTO DE PERFIL DE WHATSAPP
+        let pfpUrl;
+        try {
+            pfpUrl = await sock.profilePictureUrl(target, 'image');
+        } catch (err) {
+            pfpUrl = null; // Si no tiene foto o la tiene oculta por privacidad
+        }
+
+        const mentions = [target, ...parejas].filter(Boolean);
+
+        // Si encontramos la foto, enviamos la imagen con el texto de pie de foto
+        if (pfpUrl) {
+            await sock.sendMessage(from, { image: { url: pfpUrl }, caption: perfilTxt, mentions: mentions }, { quoted: m });
+        } else {
+            // Si no hay foto, enviamos solo el texto clásico
+            await sock.sendMessage(from, { text: perfilTxt, mentions: mentions }, { quoted: m });
+        }
+
         if (uData.stickerBase64) {
             try { await sock.sendMessage(from, { sticker: Buffer.from(uData.stickerBase64, 'base64') }); } catch {}
         }
