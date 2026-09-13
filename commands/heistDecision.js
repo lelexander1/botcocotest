@@ -8,14 +8,50 @@ async function handleCommand(ctx) {
 
     if (!session) return false;
 
-    // 1. FASE DE VOTACIÓN: AYUDAR O ABANDONAR AL COMPAÑERO HERIDO
+    // 1. SI ALGUIEN DENUNCIA EL ROBO DENTRO DE LOS 2 MINUTOS
+    if (session.fase === 'esperando_denuncia') {
+        if (command === 'denuncairrobo' || command === 'denunciar') {
+            clearTimeout(session.denunciaTimer); // Cancelamos la huida limpia
+
+            const totalJugadores = session.participantes.length;
+            const heridoIndex = Math.floor(Math.random() * totalJugadores);
+            const usuarioHerido = session.participantes[heridoIndex];
+            const votantesHabiles = session.participantes.filter(p => p !== usuarioHerido);
+
+            session.fase = 'decision_herido';
+            session.usuarioHerido = usuarioHerido;
+            session.votantesRequeridos = votantesHabiles.length;
+            session.votos = new Map();
+
+            let texto = `👮🚨 *¡LA POLICÍA FUE ALERTADA!* 🚨\n\n`;
+            texto += `📢 ¡@${sender.split('@')[0]} usó *#denuncairrobo* y la policía rodeó el banco a tiempo!\n`;
+            texto += `⚠️ Se desata un tiroteo en la huida y ¡@${usuarioHerido.split('@')[0]} ha recibido un disparo, está grave en el suelo y no puede votar!\n\n`;
+            texto += `⚡ *DECISIÓN CRÍTICA:* Los demás (${votantesHabiles.length} miembros) tienen 40 segundos para votar escribiendo *#ayudar* o *#abandonar*.`;
+
+            const mentions = [...session.participantes, sender];
+            await sock.sendMessage(from, { text: texto, mentions }, { quoted: m });
+
+            // Temporizador de votación de 40 segundos
+            session.votacionTimer = setTimeout(async () => {
+                let activeSession = heistSessions.get(from);
+                if (activeSession && activeSession.fase === 'decision_herido') {
+                    heistSessions.delete(from);
+                    await sock.sendMessage(from, { text: '⏰ Demoraron demasiado decidiendo bajo presión. La policía los arrestó a todos y perdieron la inversión.' });
+                }
+            }, 40000);
+
+            return true;
+        }
+    }
+
+    // 2. FASE DE VOTACIÓN: AYUDAR O ABANDONAR AL COMPAÑERO HERIDO
     if (session.fase === 'decision_herido') {
         if (!session.participantes.includes(sender)) {
             return false; 
         }
 
         if (sender === session.usuarioHerido) {
-            await sock.sendMessage(from, { text: `⚠️ ¡Estás herido en el suelo y no puedes votar, @${sender.split('@')[0]}! Espera a que tus compañeros decidan tu suerte.`, mentions: [sender] }, { quoted: m });
+            await sock.sendMessage(from, { text: `⚠️ ¡Estás herido en el suelo y no puedes votar, @${sender.split('@')[0]}!`, mentions: [sender] }, { quoted: m });
             return true;
         }
 
@@ -45,45 +81,10 @@ async function handleCommand(ctx) {
         }
     }
 
-    // 2. FASE DE DENUNCIA: #denuncairrobo (2 MINUTOS POST-ROBO)
-    if (session.fase === 'esperando_denuncia') {
-        if (command === 'denuncairrobo' || command === 'denunciar') {
-            clearTimeout(session.denunciaTimer);
-            heistSessions.delete(from);
-
-            try {
-                const fianza = 2500; 
-
-                let mensaje = `👮🚨 *¡OPERATIVO POLICIAL EXITOSO!* \n\n`;
-                mensaje += `📢 ¡@${sender.split('@')[0]} denunció el robo a tiempo! La policía interceptó a la banda.\n\n`;
-                mensaje += `⚖️ Todos los implicados fueron arrestados y deben pagar una fianza de *${fianza} soles* para salir libres. ¡Perdieron la inversión y fueron multados!`;
-
-                if (db) {
-                    for (const participante of session.participantes) {
-                        await db.updateOne(
-                            { jid: participante },
-                            { $inc: { soles: -fianza } },
-                            { upsert: true }
-                        );
-                    }
-                }
-
-                const mentions = [...session.participantes, sender];
-                await sock.sendMessage(from, { text: mensaje, mentions }, { quoted: m });
-                return true;
-
-            } catch (err) {
-                console.error('Error procesando denuncia:', err);
-                await sock.sendMessage(from, { text: '❌ Ocurrió un error al procesar la denuncia policial.' }, { quoted: m });
-                return true;
-            }
-        }
-    }
-
     return false;
 }
 
-// Función que calcula la votación de ayuda/abandono y reparte los premios con seguridad
+// PROCESA LA VOTACIÓN TRAS LA INTERVENCIÓN POLICIAL
 async function finalizarVotacionHeist(sock, from, session, dbCollection) {
     heistSessions.delete(from);
 
@@ -101,23 +102,23 @@ async function finalizarVotacionHeist(sock, from, session, dbCollection) {
     let gananciaPorPersona = 0;
 
     if (decisionGanadora === 'ayudar') {
-        const botinReducido = Math.floor(session.botinActual * 0.7);
+        const botinReducido = Math.floor(session.botinActual * 0.6);
         gananciaPorPersona = Math.floor(botinReducido / totalJugadores);
 
         mensajeFinal = `📊 *¡RESULTADO DE LA VOTACIÓN (${votosAyudar} a ${votosAbandonar})!*\n\n`;
-        mensajeFinal += `🤝 Decidieron ser solidarios y ayudaron a @${session.usuarioHerido.split('@')[0]}. ¡Lograron escapar todos juntos!\n\n`;
-        mensajeFinal += `💵 Botín repartido: *+${gananciaPorPersona} soles* para cada uno.`;
+        mensajeFinal += `🤝 Decidieron arriesgarse y cargaron a @${session.usuarioHerido.split('@')[0]} esquivando a la policía.\n\n`;
+        mensajeFinal += `💵 Rescate exitoso. Botín repartido: *+${gananciaPorPersona} soles* para cada uno.`;
 
     } else {
         mensajeFinal = `📊 *¡RESULTADO DE LA VOTACIÓN (${votosAbandonar} a ${votosAyudar})!*\n\n`;
-        mensajeFinal += `🏃💨 Por mayoría, decidieron abandonar a @${session.usuarioHerido.split('@')[0]} para asegurar el botín.\n\n`;
+        mensajeFinal += `🏃💨 Dejaron atrás a @${session.usuarioHerido.split('@')[0]} para escapar de la redada.\n\n`;
         
         if (totalJugadores > 1) {
             const sanos = totalJugadores - 1;
             gananciaPorPersona = Math.floor(session.botinActual / sanos);
-            mensajeFinal += `💵 El botín se repartió entre los ${sanos} sobrevivientes: *+${gananciaPorPersona} soles* cada uno.\n🚑 El compañero fue atrapado por la policía.`;
+            mensajeFinal += `💵 El botín se repartió entre los ${sanos} sobrevivientes: *+${gananciaPorPersona} soles* cada uno.\n🚑 El compañero herido fue capturado por las autoridades.`;
         } else {
-            mensajeFinal += `Estabas tú solo, no había a quién ayudar y te atraparon intentando huir.`;
+            mensajeFinal += `Estabas tú solo, caíste herido y la policía te arrestó. ¡Perdiste todo!`;
             gananciaPorPersona = 0;
         }
     }
@@ -138,7 +139,7 @@ async function finalizarVotacionHeist(sock, from, session, dbCollection) {
             }
         }
     } catch (err) {
-        console.error('Error al actualizar base de datos en votación heist:', err);
+        console.error('Error al actualizar base de datos en tiroteo heist:', err);
     }
 
     const mentions = [...session.participantes];

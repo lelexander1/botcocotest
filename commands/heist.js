@@ -1,7 +1,7 @@
 const heistSessions = new Map();
 
 async function handleCommand(ctx) {
-    const { sock, m, from, sender, args, command, groupsCollection, economyCollection, usersCollection } = ctx;
+    const { sock, m, from, sender, args, command, usersCollection, economyCollection } = ctx;
     const db = usersCollection || economyCollection;
 
     if (command === 'heist' || command === 'atraco') {
@@ -59,7 +59,7 @@ async function handleCommand(ctx) {
             }, { quoted: m });
 
             if (session.participantes.length === 4) {
-                await ejecutarRobo(sock, from, session, db);
+                await iniciarRoboBanco(sock, from, session, db);
             }
             return true;
         }
@@ -75,7 +75,7 @@ async function handleCommand(ctx) {
                 return true;
             }
 
-            await ejecutarRobo(sock, from, session, db);
+            await iniciarRoboBanco(sock, from, session, db);
             return true;
         }
     }
@@ -83,7 +83,8 @@ async function handleCommand(ctx) {
     return false;
 }
 
-async function ejecutarRobo(sock, from, session, db) {
+// INICIA EL ROBO Y ABRE LA VENTANA DE 2 MINUTOS PARA DENUNCIAR
+async function iniciarRoboBanco(sock, from, session, db) {
     const totalJugadores = session.participantes.length;
     session.fase = 'esperando_denuncia';
 
@@ -100,51 +101,52 @@ async function ejecutarRobo(sock, from, session, db) {
         console.error('Error descontando inversión:', err);
     }
 
-    const botinTotal = totalJugadores * 12000; 
+    const multiplicadorRiesgo = totalJugadores === 1 ? 2.5 : totalJugadores === 2 ? 1.8 : totalJugadores === 3 ? 1.3 : 1.0;
+    session.botinActual = Math.floor(15000 * multiplicadorRiesgo);
 
-    let texto = `🏦 *¡EL GOLPE AL BANCO HA SIDO EJECUTADO!* 🏦\n\n`;
-    texto += `👥 Ladrones en acción: *${totalJugadores} persona(s)*.\n`;
-    texto += `💰 Botín en la maleta: *${botinTotal} soles*.\n\n`;
-    texto += `🚨 *¡ATENCIÓN CIUDADANOS!* Los ladrones están huyendo con el dinero.\n`;
-    texto += `📢 Cualquier miembro del grupo tiene *2 minutos* para escribir *#denuncairrobo* y delatarlos ante la policía. Si nadie los delata, se llevan todo limpio.`;
+    let texto = `🏦 *¡EL GOLPE AL BANCO HA COMENZADO!* 🏦\n\n`;
+    texto += `👥 Equipo operativo: *${totalJugadores} persona(s)*.\n`;
+    texto += `💰 Inversión inicial: *1,000 soles* por cabeza.\n\n`;
+    texto += `🚪 La banda ha ingresado a la bóveda y está empaquetando el dinero.\n`;
+    texto += `📢 Cualquier integrante del grupo tiene *2 minutos* para escribir *#denuncairrobo* y alertar a la policía. Si nadie los delata, escaparán con el botín limpio.`;
 
     const mentions = [...session.participantes];
     await sock.sendMessage(from, { text: texto, mentions });
 
-    session.botinTotal = botinTotal;
-
+    // Si pasan los 2 minutos (120,000 ms) y NADIE denunció, se escapan con éxito
     session.denunciaTimer = setTimeout(async () => {
         let activeSession = heistSessions.get(from);
         if (activeSession && activeSession.fase === 'esperando_denuncia') {
             heistSessions.delete(from);
-            await repartirBotinIntegro(sock, from, activeSession, db);
+            await repartirBotinExitoso(sock, from, activeSession, db);
         }
     }, 120000);
 }
 
-async function repartirBotinIntegro(sock, from, session, db) {
+// SI NADIE DENUNCIA EN 2 MINUTOS: HUIDA EXITOSA
+async function repartirBotinExitoso(sock, from, session, db) {
     try {
         const totalJugadores = session.participantes.length;
-        const premioPorPersona = Math.floor(session.botinTotal / totalJugadores);
+        const premioPorPersona = Math.floor(session.botinActual / totalJugadores);
 
         if (db) {
             for (const participante of session.participantes) {
                 await db.updateOne(
                     { jid: participante },
-                    { $inc: { soles: premioPorPersona } },
+                    { $inc: { soles: premioPorPersona + 1000 } }, // Devuelve su inversión + ganancias
                     { upsert: true }
                 );
             }
         }
 
-        let mensaje = `🎉 *¡HUIDA EXITOSA!* Nadie delató a los ladrones a tiempo.\n\n`;
-        mensaje += `💵 El botín íntegro fue repartido: *+${premioPorPersona} soles* para cada uno. ¡Disfruten el dinero!`;
+        let mensaje = `🎉 *¡HUIDA EXITOSA!* Pasaron los 2 minutos y nadie delató a los ladrones.\n\n`;
+        mensaje += `💵 El botín fue repartido con éxito: *+${premioPorPersona} soles* para cada uno. ¡Golpe limpio!`;
 
         const mentions = [...session.participantes];
         await sock.sendMessage(from, { text: mensaje, mentions });
     } catch (err) {
-        console.error('Error al repartir botín íntegro:', err);
+        console.error('Error al repartir botín:', err);
     }
 }
 
-module.exports = { handleCommand, heistSessions };
+module.exports = { handleCommand, heistSessions, iniciarRoboBanco };
