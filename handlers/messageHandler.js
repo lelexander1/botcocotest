@@ -4,7 +4,9 @@ const ia = require('../commands/ia');
 const utilidades = require('../commands/utilidades');
 const tiktok = require('../commands/tiktok');
 const hentaiAcciones = require('../commands/hentaiAcciones'); 
-const handlers = [economia, moderacion, ia, utilidades, hentaiAcciones, tiktok];
+const heist = require('../commands/heist');
+const heistDecision = require('../commands/heistDecision');
+const handlers = [economia, moderacion, ia, utilidades, hentaiAcciones, tiktok, heist, heistDecision];
 
 function createState() {
     return {
