@@ -599,7 +599,7 @@ async function handleCommand(ctx) {
         }
         return true;
     }
-    
+
     if (command === 'perfil' || command === 'verperfil') {
         const target = m.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0] || m.message.extendedTextMessage?.contextInfo?.participant || sender;
         const uData = await usersCollection.findOne({ jid: target }) || {};
@@ -734,6 +734,62 @@ async function handleCommand(ctx) {
             `🪙 *CoinGecko:* Peticiones: \`${state.apiUsageStats.coinGeckoRequests}\``;
         await sock.sendMessage(from, { text: reporteTokens }, { quoted: m });
         return true;
+    }
+
+    if (command === 'partidos' || command === 'futbol') {
+        try {
+            await sock.sendMessage(from, { text: '⚽ Buscando partidos en vivo...' }, { quoted: m });
+
+            const apiKey = process.env.API_FOOTBALL_KEY;
+            if (!apiKey) {
+                await sock.sendMessage(from, { text: '⚠️ La API Key de fútbol no está configurada.' }, { quoted: m });
+                return true;
+            }
+
+            // Endpoint de API-Football v3 para partidos en vivo (live=all)
+            const response = await axios.get('https://v3.football.api-sports.io/fixtures?live=all', {
+                headers: {
+                    'x-apisports-key': apiKey
+                }
+            });
+
+            const partidos = response.data.response;
+
+            if (!partidos || partidos.length === 0) {
+                await sock.sendMessage(from, { text: 'ℹ️ No hay partidos jugándose en este momento.' }, { quoted: m });
+                return true;
+            }
+
+            // Limitamos a 15 partidos para no hacer un mensaje gigante en WhatsApp
+            const partidosMostrados = partidos.slice(0, 15);
+            let textoPartidos = '🔴 *PARTIDOS EN VIVO* 🔴\n\n';
+
+            partidosMostrados.forEach(p => {
+                const homeTeam = p.teams.home.name;
+                const awayTeam = p.teams.away.name;
+                const homeScore = p.goals.home ?? 0;
+                const awayScore = p.goals.away ?? 0;
+                // Si el minuto es null (ej. medio tiempo), usa el estado corto (HT, FT, etc.)
+                const minuto = p.fixture.status.elapsed ? `${p.fixture.status.elapsed}'` : p.fixture.status.short;
+                const liga = p.league.name;
+
+                textoPartidos += `🏆 *${liga}*\n`;
+                textoPartidos += `⏱️ ${minuto} | 🛡️ ${homeTeam} *${homeScore} - ${awayScore}* ${awayTeam}\n`;
+                textoPartidos += `────────────────\n`;
+            });
+
+            if (partidos.length > 15) {
+                textoPartidos += `\n_...y ${partidos.length - 15} partidos más._`;
+            }
+
+            await sock.sendMessage(from, { text: textoPartidos }, { quoted: m });
+            return true;
+
+        } catch (err) {
+            console.error('Error en API-Football:', err.message);
+            await sock.sendMessage(from, { text: '❌ Ocurrió un error al consultar los marcadores. Verifica tu API Key.' }, { quoted: m });
+            return true;
+        }
     }
 
     if (command === 'topmsg' || command === 'masactivos') {
