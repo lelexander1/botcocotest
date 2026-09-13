@@ -3,11 +3,9 @@ const axios = require('axios');
 async function handleCommand(ctx) {
     const { sock, m, from, sender, args, command, groupsCollection } = ctx;
 
-    // Comandos habilitados para usar la API de Rule34
     const accionesRule34 = ['anal', 'paizuri', 'milf', 'tentacles', 'blowjob'];
 
     if (accionesRule34.includes(command)) {
-        // Candado estricto de NSFW por grupo
         if (from.endsWith('@g.us') && groupsCollection) {
             const gData = await groupsCollection.findOne({ groupId: from });
             if (!gData?.nsfw) {
@@ -23,7 +21,6 @@ async function handleCommand(ctx) {
             return true;
         }
 
-        // Textos personalizados con la estructura que pediste
         let textoAccion = '';
         if (command === 'anal') {
             textoAccion = `🔥 @${sender.split('@')[0]} realizó un anal a @${target.split('@')[0]} 🥵🍑`;
@@ -40,9 +37,9 @@ async function handleCommand(ctx) {
         const mentions = [sender, target];
 
         try {
-            // Generamos un número de página (pid) aleatorio entre 0 y 50 para traer variedad de imágenes distintas
-            const randomPid = Math.floor(Math.random() * 50);
+            const randomPid = Math.floor(Math.random() * 20);
 
+            // Leyendo las credenciales de forma segura desde las variables de entorno de Render
             const response = await axios.get('https://api.rule34.xxx/index.php', {
                 params: {
                     page: 'dapi',
@@ -51,15 +48,16 @@ async function handleCommand(ctx) {
                     tags: command,
                     pid: randomPid,
                     limit: 100,
-                    json: 1
+                    json: 1,
+                    user_id: process.env.RULE34_USER_ID,
+                    api_key: process.env.RULE34_API_KEY
                 },
-                timeout: 10000 // Timeout de seguridad de 10 segundos
+                timeout: 10000
             });
 
             const posts = response.data;
 
             if (posts && Array.isArray(posts) && posts.length > 0) {
-                // Filtramos imágenes válidas (excluyendo videos pesados webm/mp4)
                 const postsValidos = posts.filter(p => p.file_url && !p.file_url.endsWith('.webm') && !p.file_url.endsWith('.mp4'));
                 
                 if (postsValidos.length > 0) {
@@ -76,12 +74,12 @@ async function handleCommand(ctx) {
                 }
             }
 
-            console.log('Rule34 no devolvió posts válidos para la página aleatoria del tag:', command);
+            console.log('Rule34 autenticado no devolvió posts para la tag:', command);
             await sock.sendMessage(from, { text: '❌ No se encontró una imagen válida en este intento, prueba de nuevo.', mentions }, { quoted: m });
             return true;
 
         } catch (err) {
-            console.error('Error detallado en Rule34:', err.message);
+            console.error('Error detallado con API Key de Rule34:', err.message);
             await sock.sendMessage(from, { text: `❌ Error al conectar con Rule34: ${err.message}`, mentions }, { quoted: m });
             return true;
         }
