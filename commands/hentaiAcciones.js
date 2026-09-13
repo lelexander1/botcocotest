@@ -37,14 +37,15 @@ async function handleCommand(ctx) {
         const mentions = [sender, target];
 
         try {
-            console.log(`[Rule34] Buscando contenido para la acción: ${command}`);
+            console.log(`[Rule34] Buscando videos cortos o animaciones para la acción: ${command}`);
             
+            // Buscamos priorizando formato MP4/WebM o contenido animado que WhatsApp reproduce fluidamente como GIF
             const response = await axios.get('https://api.rule34.xxx/index.php', {
                 params: {
                     page: 'dapi',
                     s: 'post',
                     q: 'index',
-                    tags: command,
+                    tags: `${command} animated`,
                     limit: 100,
                     json: 1,
                     user_id: process.env.RULE34_USER_ID,
@@ -56,14 +57,30 @@ async function handleCommand(ctx) {
             const posts = response.data;
 
             if (posts && Array.isArray(posts) && posts.length > 0) {
-                // Filtramos cualquier post cuya URL termine en .gif
-                const postsGifs = posts.filter(p => p.file_url && p.file_url.toLowerCase().endsWith('.gif'));
-                console.log(`[Rule34] GIFs encontrados en total: ${postsGifs.length}`);
+                // Filtramos preferentemente videos cortos (.mp4 o .webm) ya que WhatsApp los reproduce perfectamente en bucle con gifPlayback
+                const postsVideos = posts.filter(p => p.file_url && (p.file_url.toLowerCase().endsWith('.mp4') || p.file_url.toLowerCase().endsWith('.webm')));
+                
+                if (postsVideos.length > 0) {
+                    const randomPost = postsVideos[Math.floor(Math.random() * postsVideos.length)];
+                    const videoUrl = randomPost.file_url;
+                    console.log(`[Rule34] Enviando video en bucle: ${videoUrl}`);
 
+                    await sock.sendMessage(from, { 
+                        video: { url: videoUrl }, 
+                        gifPlayback: true,
+                        caption: textoAccion,
+                        mentions: mentions
+                    }, { quoted: m });
+                    
+                    return true;
+                }
+
+                // Respaldo secundario si no hay mp4, buscando .gif tradicional
+                const postsGifs = posts.filter(p => p.file_url && p.file_url.toLowerCase().endsWith('.gif'));
                 if (postsGifs.length > 0) {
-                    const randomPost = postsGifs[Math.floor(Math.random() * postsGifs.length)];
-                    const gifUrl = randomPost.file_url;
-                    console.log(`[Rule34] Enviando URL de GIF: ${gifUrl}`);
+                    const randomGif = postsGifs[Math.floor(Math.random() * postsGifs.length)];
+                    const gifUrl = randomGif.file_url;
+                    console.log(`[Rule34] Enviando GIF: ${gifUrl}`);
 
                     await sock.sendMessage(from, { 
                         video: { url: gifUrl }, 
@@ -76,21 +93,36 @@ async function handleCommand(ctx) {
                 }
             }
 
-            console.log('[Rule34] No se encontraron GIFs, buscando imágenes estándar como respaldo...');
-            if (posts && posts.length > 0) {
-                const postsValidos = posts.filter(p => p.file_url && !p.file_url.endsWith('.webm') && !p.file_url.endsWith('.mp4'));
-                if (postsValidos.length > 0) {
-                    const randomPost = postsValidos[Math.floor(Math.random() * postsValidos.length)];
+            // Último respaldo general si la etiqueta animated no arrojó clips
+            const responseFallback = await axios.get('https://api.rule34.xxx/index.php', {
+                params: {
+                    page: 'dapi',
+                    s: 'post',
+                    q: 'index',
+                    tags: command,
+                    limit: 50,
+                    json: 1,
+                    user_id: process.env.RULE34_USER_ID,
+                    api_key: process.env.RULE34_API_KEY
+                }
+            });
+
+            const postsFallback = responseFallback.data;
+            if (postsFallback && Array.isArray(postsFallback) && postsFallback.length > 0) {
+                const validosFb = postsFallback.filter(p => p.file_url && (p.file_url.endsWith('.mp4') || p.file_url.endsWith('.gif')));
+                if (validosFb.length > 0) {
+                    const randomFb = validosFb[Math.floor(Math.random() * validosFb.length)];
                     await sock.sendMessage(from, { 
-                        image: { url: randomPost.file_url }, 
-                        caption: textoAccion,
-                        mentions: mentions
+                        video: { url: randomFb.file_url }, 
+                        gifPlayback: true,
+                        caption: textoAccion, 
+                        mentions 
                     }, { quoted: m });
                     return true;
                 }
             }
 
-            await sock.sendMessage(from, { text: '❌ No se encontró contenido multimedia disponible para esta acción.', mentions }, { quoted: m });
+            await sock.sendMessage(from, { text: '❌ No se encontró contenido animado disponible para esta acción.', mentions }, { quoted: m });
             return true;
 
         } catch (err) {
