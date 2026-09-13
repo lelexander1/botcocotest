@@ -40,14 +40,24 @@ async function handleCommand(ctx) {
         const mentions = [sender, target];
 
         try {
+            // Mapeo con filtros de popularidad/puntuación para asegurar que la API devuelva resultados válidos
+            const tagsMap = {
+                'anal': 'anal score:>=5',
+                'paizuri': 'paizuri score:>=5',
+                'milf': 'milf score:>=5',
+                'tentacles': 'tentacles score:>=5',
+                'blowjob': 'blowjob score:>=5'
+            };
+
+            const queryTag = tagsMap[command] || command;
 
             const response = await axios.get('https://api.rule34.xxx/index.php', {
                 params: {
                     page: 'dapi',
                     s: 'post',
                     q: 'index',
-                    tags: command,
-                    limit: 50,
+                    tags: queryTag,
+                    limit: 100,
                     json: 1
                 }
             });
@@ -75,7 +85,7 @@ async function handleCommand(ctx) {
             }
 
             // Si no hay posts válidos, avísanos por consola en lugar de enviar solo texto sin imagen
-            console.log('Rule34 no devolvió posts válidos para la tag:', command);
+            console.log('Rule34 no devolvió posts válidos para la tag:', queryTag);
             await sock.sendMessage(from, { text: '❌ No se encontró una imagen válida para esta acción.', mentions }, { quoted: m });
             return true;
 
