@@ -63,6 +63,7 @@ async function handleCommand(ctx) {
                     const randomPost = postsValidos[Math.floor(Math.random() * postsValidos.length)];
                     const imageUrl = randomPost.file_url;
 
+                    // AQUÍ ESTABA EL DETALLE: Añadimos 'image: { url: imageUrl }'
                     await sock.sendMessage(from, { 
                         image: { url: imageUrl }, 
                         caption: textoAccion,
