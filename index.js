@@ -741,7 +741,7 @@ async function connectToWhatsApp() {
                 mentions: [sender, target]
             }, { quoted: m });
 
-        setTimeout(async () => {
+            setTimeout(async () => {
                 const juicio = juiciosActivos.get(from);
                 if (!juicio) return;
                 juiciosActivos.delete(from);
@@ -752,8 +752,6 @@ async function connectToWhatsApp() {
                     const saldoActualDemandado = userDemandado?.soles || 0;
 
                     // Calculamos cuánto se le puede descontar como máximo sin bajar de -50
-                    // Ejemplo: Si tiene 100 soles, le podemos descontar los 5000 completos.
-                    // Si tiene -40 soles, solo le podemos descontar 10 para llegar exactamente a -50.
                     const maximoDescuentoPermitido = saldoActualDemandado - (-50);
 
                     // Si ya está en -50 o menos, el descuento real es 0
@@ -772,6 +770,13 @@ async function connectToWhatsApp() {
                 }
             }, 300000); // 5 minutos
 
+            return; // ← AQUÍ ESTÁ LA CLAVE: Salir después del juicio
+        }
+
+        // ==========================================
+        // PROCESADORES DE VOTOS (CULPABLE/INOCENTE)
+        // ==========================================
+        // AHORA ESTOS ESTÁN AFUERA DEL IF ANTERIOR
         if (command === 'culpable' || command === 'inocente') {
             const juicio = juiciosActivos.get(from);
             if (!juicio) return; 
@@ -1143,7 +1148,6 @@ async function connectToWhatsApp() {
             }
         }
 
-        
 
 
         if (command === 'crypto' || command === 'precio' || command === 'cripto') {
@@ -1630,7 +1634,6 @@ async function connectToWhatsApp() {
             }
         }
 
- 
         if (command === 'consumo' || command === 'stats' || command === 'recursos') {
             if (!esOwner(sender)) return;
             const memUsadaByBot = process.memoryUsage().rss / (1024 * 1024);
