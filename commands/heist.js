@@ -4,6 +4,9 @@ const heistSessions = new Map();
 async function handleCommand(ctx) {
     const { sock, m, from, sender, args, command, groupsCollection, economyCollection } = ctx;
 
+    // Log para verificar si el bot detecta el comando en los registros de Render
+    console.log(`[Heist Debug] Comando recibido: "${command}" en el chat: ${from}`);
+
     if (command === 'heist' || command === 'atraco') {
         const subCommand = args[0]?.toLowerCase();
         let session = heistSessions.get(from);
@@ -67,7 +70,7 @@ async function handleCommand(ctx) {
                 mentions: [sender]
             }, { quoted: m });
 
-            // Si ya llegaron a 4, podemos arrancar automáticamente o dar la orden
+            // Si ya llegaron a 4, podemos arrancar automáticamente
             if (session.participantes.length === 4) {
                 clearTimeout(session.timer);
                 await iniciarAtraco(sock, from, session, economyCollection);
@@ -112,7 +115,6 @@ async function iniciarAtraco(sock, from, session, economyCollection) {
     }
 
     // Escalado de recompensa: Menos jugadores = Mayor riesgo pero MUCHO más botín base
-    // Si van 4 pagan normal, si van menos (ej 1 o 2), el multiplicador sube
     const multiplicadorRiesgo = totalJugadores === 1 ? 2.5 : totalJugadores === 2 ? 1.8 : totalJugadores === 3 ? 1.3 : 1.0;
     const botinBase = Math.floor(15000 * multiplicadorRiesgo);
 
