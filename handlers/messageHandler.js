@@ -2,6 +2,7 @@ const economia = require('../commands/economia');
 const moderacion = require('../commands/moderacion');
 const ia = require('../commands/ia');
 const utilidades = require('../commands/utilidades');
+const tiktok = require('../commands/tiktok');
 const hentaiAcciones = require('../commands/hentaiAcciones'); // <--- 1. Importado aquí
 
 function createState() {
@@ -119,7 +120,7 @@ async function handleMessage(ctx) {
     const commandCtx = { ...ctx, body, args, command, messageType };
 
     // ORDEN DE EJECUCIÓN DE COMANDOS (Añadido hentaiAcciones al final)
-    const handlers = [economia, moderacion, ia, utilidades, hentaiAcciones]; // <--- 2. Integrado aquí
+    const handlers = [economia, moderacion, ia, utilidades, hentaiAcciones, tiktok];
 
     for (const handler of handlers) {
         try {
