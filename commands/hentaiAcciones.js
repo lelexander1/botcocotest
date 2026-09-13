@@ -3,11 +3,11 @@ const axios = require('axios');
 async function handleCommand(ctx) {
     const { sock, m, from, sender, args, command, groupsCollection } = ctx;
 
-    // Puedes agregar más comandos aquí fácilmente en el futuro
-    const accionesHentai = ['anal', 'paizuri', 'milf', 'tentacles'];
+    // Tus comandos de interacción conectados a E-Hentai
+    const accionesHentai = ['anal', 'paizuri', 'milf', 'tentacles', 'blowjob'];
 
     if (accionesHentai.includes(command)) {
-        // 1. Candado estricto de NSFW por grupo
+        // Candado estricto de NSFW por grupo
         if (from.endsWith('@g.us') && groupsCollection) {
             const gData = await groupsCollection.findOne({ groupId: from });
             if (!gData?.nsfw) {
@@ -16,7 +16,6 @@ async function handleCommand(ctx) {
             }
         }
 
-        // 2. Detección de la persona mencionada
         const target = m.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0];
         
         if (!target) {
@@ -24,6 +23,7 @@ async function handleCommand(ctx) {
             return true;
         }
 
+        // Textos de interacción personalizados
         let textoAccion = '';
         if (command === 'anal') {
             textoAccion = `🔥 @${sender.split('@')[0]} le realizó un anal a @${target.split('@')[0]} 🥵🍑`;
@@ -33,22 +33,38 @@ async function handleCommand(ctx) {
             textoAccion = `👩‍🦰 @${sender.split('@')[0]} está disfrutando con la MILF @${target.split('@')[0]} 🍷🔥`;
         } else if (command === 'tentacles') {
             textoAccion = `🐙 ¡Los tentáculos atraparon a @${target.split('@')[0]} por sorpresa! (Iniciado por @${sender.split('@')[0]}) 🌀`;
+        } else if (command === 'blowjob') {
+            textoAccion = `👅 @${sender.split('@')[0]} recibió un buen servicio de parte de @${target.split('@')[0]} 🤤`;
         }
 
         const mentions = [sender, target];
 
         try {
-            // 3. Consultamos la API oficial de E-Hentai usando una galería de respaldo o búsqueda por tag
-            // (Usamos un conjunto de IDs seguros de ejemplo por categoría para garantizar que la imagen cargue al instante)
-            const galeriasEjemplo = {
-                'anal': { gid: 2231376, token: "a7584a5932" },
-                'paizuri': { gid: 2231376, token: "a7584a5932" },
-                'milf': { gid: 2231376, token: "a7584a5932" },
-                'tentacles': { gid: 2231376, token: "a7584a5932" }
+            // Mapeo de categorías usando la sintaxis de etiquetas exactas de E-Hentai (ej: f:anal$ o m:anal$)
+            // Aquí puedes tener un conjunto de galerías seguras previamente verificadas para cada tag
+            const bancoGaleriaPorTag = {
+                'anal': [
+                    { gid: 2231376, token: "a7584a5932" },
+                    { gid: 2197090, token: "2f440c5f01" }
+                ],
+                'paizuri': [
+                    { gid: 2924387, token: "aa28f4a72a" }
+                ],
+                'milf': [
+                    { gid: 2043548, token: "bdb0cd9ec2" }
+                ],
+                'tentacles': [
+                    { gid: 2231376, token: "a7584a5932" }
+                ],
+                'blowjob': [
+                    { gid: 2197090, token: "2f440c5f01" }
+                ]
             };
 
-            const seleccion = galeriasEjemplo[command] || { gid: 2231376, token: "a7584a5932" };
+            const opcionesTag = bancoGaleriaPorTag[command] || bancoGaleriaPorTag['anal'];
+            const seleccion = opcionesTag[Math.floor(Math.random() * opcionesTag.length)];
 
+            // Petición oficial a la API de E-Hentai con el método gdata
             const metaPayload = {
                 method: "gdata",
                 gidlist: [[seleccion.gid, seleccion.token]],
@@ -60,28 +76,22 @@ async function handleCommand(ctx) {
             });
 
             const item = response.data.gmetadata?.[0];
-            let caption = `${textoAccion}\n\n`;
 
-            if (item && !item.error) {
-                caption += `📖 *Fuente:* ${item.title}\n`;
-                caption += `🔗 *Ver más:* https://e-hentai.org/g/${item.gid}/${item.token}/`;
-            }
-
-            // 4. Enviamos la imagen obtenida de la API junto con el texto y las menciones legales de WhatsApp
+            // Enviamos únicamente la imagen de portada y el texto de la acción (sin fuentes ni enlaces)
             if (item && item.thumb) {
                 await sock.sendMessage(from, { 
                     image: { url: item.thumb }, 
-                    caption: caption,
+                    caption: textoAccion,
                     mentions: mentions
                 }, { quoted: m });
             } else {
-                await sock.sendMessage(from, { text: caption, mentions }, { quoted: m });
+                await sock.sendMessage(from, { text: textoAccion, mentions }, { quoted: m });
             }
 
             return true;
 
         } catch (err) {
-            console.error('Error al obtener imagen de E-Hentai:', err.message);
+            console.error('Error al conectar con la API de E-Hentai:', err.message);
             await sock.sendMessage(from, { text: textoAccion, mentions }, { quoted: m });
             return true;
         }
