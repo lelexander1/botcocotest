@@ -1,3 +1,4 @@
+// Usamos un Map en memoria para almacenar las sesiones activas de atraco por grupo
 const heistSessions = new Map();
 
 async function handleCommand(ctx) {
@@ -16,7 +17,6 @@ async function handleCommand(ctx) {
                 return true;
             }
 
-            // Creamos la sesión sin temporizador de expiración forzosa
             heistSessions.set(from, {
                 lider: sender,
                 participantes: [sender],
@@ -47,11 +47,12 @@ async function handleCommand(ctx) {
                 return true;
             }
 
-            if (economyCollection) {
-                const userEco = await economyCollection.findOne({ userId: sender });
-                const saldo = userEco?.wallet || 0;
+            const colABuscar = economyCollection || ctx.usersCollection;
+            if (colABuscar) {
+                const userEco = await colABuscar.findOne({ jid: sender });
+                const saldo = userEco?.soles || userEco?.wallet || 0;
                 if (saldo < 1000) {
-                    await sock.sendMessage(from, { text: `❌ No tienes suficiente dinero. Necesitas al menos 💰 *1,000 monedas* en tu billetera.` }, { quoted: m });
+                    await sock.sendMessage(from, { text: `❌ No tienes suficiente dinero. Necesitas al menos 💰 *1,000 soles* en tu cuenta.` }, { quoted: m });
                     return true;
                 }
             }
@@ -64,7 +65,7 @@ async function handleCommand(ctx) {
 
             // Si llegan a 4 automáticamente arranca
             if (session.participantes.length === 4) {
-                await iniciarAtraco(sock, from, session, economyCollection);
+                await iniciarAtraco(sock, from, session, colABuscar);
             }
             return true;
         }
@@ -81,7 +82,8 @@ async function handleCommand(ctx) {
                 return true;
             }
 
-            await iniciarAtraco(sock, from, session, economyCollection);
+            const colABuscar = economyCollection || ctx.usersCollection;
+            await iniciarAtraco(sock, from, session, colABuscar);
             return true;
         }
     }
@@ -90,15 +92,15 @@ async function handleCommand(ctx) {
 }
 
 // FUNCIÓN DE EJECUCIÓN DEL GOLPE
-async function iniciarAtraco(sock, from, session, economyCollection) {
+async function iniciarAtraco(sock, from, session, dbCollection) {
     const totalJugadores = session.participantes.length;
     session.fase = 'en_curso';
 
-    if (economyCollection) {
+    if (dbCollection) {
         for (const participante of session.participantes) {
-            await economyCollection.updateOne(
-                { userId: participante },
-                { $inc: { wallet: -1000 } }
+            await dbCollection.updateOne(
+                { jid: participante },
+                { $inc: { soles: -1000 } }
             );
         }
     }
@@ -108,7 +110,7 @@ async function iniciarAtraco(sock, from, session, economyCollection) {
 
     let textoNarrativo = `🏦 *¡EL GOLPE AL BANCO HA COMENZADO!* 🏦\n\n`;
     textoNarrativo += `👥 Equipo operativo: *${totalJugadores} persona(s)*.\n`;
-    textoNarrativo += `💰 Inversión inicial: *1,000 monedas* por cabeza.\n\n`;
+    textoNarrativo += `💰 Inversión inicial: *1,000 soles* por cabeza.\n\n`;
     textoNarrativo += `🚪 Entran sigilosamente al edificio central... desactivan las cámaras y abren la bóveda principal.\n`;
     
     const heridoIndex = Math.floor(Math.random() * totalJugadores);
@@ -116,7 +118,7 @@ async function iniciarAtraco(sock, from, session, economyCollection) {
 
     textoNarrativo += `⚠️ *¡ALERTA ROJA!* La policía rodeó el perímetro y se desata un tiroteo.\n`;
     textoNarrativo += `🚑 ¡@${usuarioHerido.split('@')[0]} ha recibido un disparo y está herido en el suelo!\n\n`;
-    textoNarrativo += `⚡ *DECISIÓN CRÍTICA:* ¿El equipo decide *#ayudar* al compañero (reduce el botín pero salva su vida) o lo *#abandonan* para huir con todo?`;
+    textoNarrativo += `⚡ *DECISIÓN CRÍTICA:* Cada miembro del equipo debe votar escribiendo *#ayudar* o *#abandonar*.`;
 
     const mentions = [...session.participantes];
     await sock.sendMessage(from, { text: textoNarrativo, mentions });
@@ -124,6 +126,16 @@ async function iniciarAtraco(sock, from, session, economyCollection) {
     session.fase = 'decision_herido';
     session.usuarioHerido = usuarioHerido;
     session.botinActual = botinBase;
+    session.votos = new Map();
+
+    // Temporizador de votación (25 segundos)
+    session.votacionTimer = setTimeout(async () => {
+        let activeSession = heistSessions.get(from);
+        if (activeSession && activeSession.fase === 'decision_herido') {
+            heistSessions.delete(from);
+            await sock.sendMessage(from, { text: '⏰ El tiempo de votación terminó. El atraco fracasó por indecisión y la policía los atrapó.' });
+        }
+    }, 25000);
 }
 
 module.exports = { handleCommand, heistSessions };
