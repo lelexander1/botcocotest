@@ -1722,7 +1722,7 @@ async function connectToWhatsApp() {
             await usersCollection.updateOne({ jid: sender }, { $inc: { soles: 2000 }, $set: { lastDaily: Date.now() } }, { upsert: true });
             return await sock.sendMessage(from, { text: '🎉 ¡Reclamaste tu recompensa diaria de *🪙 2000 soles*!' }, { quoted: m });
         }
-// <-- Este es el cierre correcto del event listener sock.ev.on('messages.upsert', ...)
+    }); // <-- Este es el cierre correcto del event listener sock.ev.on('messages.upsert', ...)
 } // <-- Cierre de la función connectToWhatsApp()
 
 
