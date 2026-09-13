@@ -403,19 +403,30 @@ async function connectToWhatsApp() {
             return await sock.sendMessage(from, { text: mensajeDev, mentions: [target] }, { quoted: m });
         }
 
-        if (['work', 'w', 'daily'].includes(command)) {
-            const limit = command === 'daily' ? 86400000 : 30000;
+
+        if (['work', 'w'].includes(command)) {
+            const limit = 8 * 60 * 60 * 1000; // 8 horas en milisegundos
             const key = `${sender}-${command}`;
             const last = cooldowns.get(key) || 0;
-            if (Date.now() - last < limit) {
-                return await sock.sendMessage(from, { text: `⏳ Espera *${Math.ceil((limit - (Date.now() - last)) / 1000)}s* para usar #${command}.` }, { quoted: m });
+            const tiempoTranscurrido = Date.now() - last;
+
+            if (tiempoTranscurrido < limit) {
+                const horasRestantes = ((limit - tiempoTranscurrido) / (1000 * 60 * 60)).toFixed(1);
+                return await sock.sendMessage(from, { text: `⏳ Estás muy cansado. Debes esperar *${horasRestantes} horas* para volver a trabajar con #${command}.` }, { quoted: m });
             }
+
             cooldowns.set(key, Date.now());
+            const earned = Math.floor(Math.random() * 2000) + 500; // Un pago jugoso acorde a 8 horas
+            await usersCollection.updateOne({ jid: sender }, { $inc: { soles: earned } }, { upsert: true });
+            
+            return await sock.sendMessage(from, { text: `💼 Cumpliste tu turno laboral de 8 horas y ganaste *🪙 ${earned.toLocaleString()} soles*. ¡Buen trabajo!` }, { quoted: m });
         }
+
 
         if (command === 'ping' || command === 'p') {
             return await sock.sendMessage(from, { text: '¡Pong! 🏓 CocoBot activo y en línea.' }, { quoted: m });
         }
+
 
         if (command === 'menu' || command === 'help') {
             const menu = `⚡ *PANEL PRINCIPAL - CocoBot* ⚡\n` +
@@ -423,27 +434,33 @@ async function connectToWhatsApp() {
                 `👤 *Creado por:* Alencito/Gabo\n` +
                 `🚀 *Estado:* Online 24/7 \n` +
                 `────────────────────────\n\n` +
+                `🎮 *¡ÚNETE A NUESTRA COMUNIDAD!* 🎮\n` +
+                `👉 *Discord Oficial:* https://discord.gg/mDQfz3UKbG\n\n` +
+                `────────────────────────\n\n` +
                 `📌 *COMANDOS Y FUNCIONES:* \n\n` +
-                `🤖 *#ia [texto]*\n   ↳ Consulta a la Inteligencia Artificial.\n\n` +
+                `🤖 *#ia [texto]*\n   ↳ Inteligencia Artificial con memoria por chat.\n\n` +
                 `🎙️ *#voz [texto]*\n   ↳ Convierte texto a nota de voz.\n\n` +
-                `🪙 *#crypto [moneda]*\n   ↳ Consulta precios de criptomonedas.\n\n` +
-                `😂 *#chistes*\n   ↳ Envía un chiste corto.\n\n` +
+                `🪙 *#crypto [moneda]*\n   ↳ Consulta precios en tiempo real.\n\n` +
+                `😂 *#chistes / #chistenegro*\n   ↳ Chistes cortos y humor +18.\n\n` +
                 `🖼️ *#imagen [tema]*\n   ↳ Busca y envía una foto aleatoria.\n\n` +
                 `📦 *#still [texto / ver / borrar]*\n   ↳ Tu banco personal de notas.\n\n` +
-                `👤 *#edad, #frase, #setsticker*\n   ↳ Configura tu perfil.\n\n` +
-                `🔗 *#facebook, #instagram, #discord, #spotify, #x [link]*\n   ↳ Añade redes sociales.\n\n` +
-                `👁️ *#perfil [@usuario]*\n   ↳ Muestra tu tarjeta de perfil.\n\n` +
-                `⏰ *#recordatorio o #recg [tiempo] [msj]*\n   ↳ Programa recordatorios.\n\n` +
-                `🎨 *#s / #gif / #toimg*\n   ↳ Crea y convierte stickers.\n\n` +
+                `👤 *#edad, #frase, #setsticker, #genero*\n   ↳ Configura tu perfil de usuario.\n\n` +
+                `🔗 *#redes sociales (facebook, instagram, etc.)*\n   ↳ Añade enlaces a tu perfil.\n\n` +
+                `👁️ *#perfil [@usuario]*\n   ↳ Muestra tu tarjeta de presentación y soles.\n\n` +
+                `🏆 *#topricos*\n   ↳ Ranking global de los más adinerados.\n\n` +
+                `⏰ *#recordatorio o #recg [tiempo] [msj]*\n   ↳ Programa recordatorios personales o grupales.\n\n` +
+                `🎨 *#s / #gif / #toimg*\n   ↳ Crea stickers, busca GIFs y pasa stickers a foto.\n\n` +
                 `💍 *#casarse [@usuario] / #aceptar*\n   ↳ Sistema de matrimonios.\n\n` +
-                `💔 *#divorcio [@usuario] [tipo]*\n   ↳ Tipos de separación (normal/juicio/encuesta).\n\n` +
-                `⚖️ *#juicio [@usuario] [monto] [motivo]*\n   ↳ Demanda a alguien para quitarle soles.\n\n` +
-                `🎂 *#cumple DD/MM / #cumples*\n   ↳ Registra y consulta cumpleaños.\n\n` +
-                `🪙 *#bal / #work / #daily / #flip / #apostar / #ruleta / #slots*\n   ↳ Economía y juegos.\n\n` +
+                `💔 *#divorcio [@usuario] [tipo]*\n   ↳ Tipos de separación (normal, juicio o encuesta).\n\n` +
+                `⚖️ *#juicio [@usuario] [monto] [motivo]*\n   ↳ Demanda a alguien (tope de deuda de -50 soles).\n\n` +
+                `🎂 *#cumple DD/MM / #cumples*\n   ↳ Registra tu cumpleaños y mira los próximos.\n\n` +
+                `🪙 *#bal / #work / #daily / #flip / #apostar / #ruleta / #slots*\n   ↳ Economía, juegos de azar y trabajo (cada 8h).\n\n` +
+                `🚨 *#crime o #delito*\n   ↳ Delinque o trabaja para ganar dinero (¡o llévate una multa!)\n\n` +
                 `💸 *#yapear [monto] [@usuario]*\n   ↳ Transfiere dinero a otra persona.\n\n` +
-                `🛒 *#tienda / #comprar [item]*\n   ↳ Tienda exclusiva para gastar tus soles.\n\n` +
+                `🛒 *#tienda / #comprar [item]*\n   ↳ Compra admin, silencios, cambio de nombre (100k) o la bomba final.\n\n` +
                 `🔇 *#mutear [@us] [min] / #fianza*\n   ↳ Sistema de cárcel y fianzas (Solo Admins).\n\n` +
                 `🗑️ *#del / #delete*\n   ↳ Responde a un mensaje para borrarlo.`;
+        
             return await sock.sendMessage(from, { text: menu }, { quoted: m });
         }
 
@@ -575,6 +592,43 @@ async function connectToWhatsApp() {
             }
         }
 
+        if (command === 'crime' || command === 'criminal' || command === 'delito' || command === 'crimen') {
+            const keyCooldown = `${sender}-crime`;
+            const ultimaVez = cooldowns.get(keyCooldown) || 0;
+            const cooldownTiempo = 15 * 60 * 1000; // 15 minutos de espera para delinquir
+
+            if (Date.now() - ultimaVez < cooldownTiempo) {
+                const minutosFaltantes = Math.ceil((cooldownTiempo - (Date.now() - ultimaVez)) / (1000 * 60));
+                return await sock.sendMessage(from, { text: `🚔 La policía te sigue la pista. Esconde tus huellas y espera *${minutosFaltantes} minutos* para cometer otro delito.` }, { quoted: m });
+            }
+
+            cooldowns.set(keyCooldown, Date.now());
+
+            // Lista de escenarios posibles con porcentajes de éxito y recompensas/multas
+            const escenarios = [
+                { exito: true, texto: "🏦 Robaste un banco local con éxito y no fuiste descubierto.", premio: 4500 },
+                { exito: true, texto: "🗑️ Trabajaste honradamente como recolector de basura y encontraste una billetera tirada.", premio: 1200 },
+                { exito: true, texto: "💻 Hackeaste el sistema de una corporación y extorsionaste a los directivos.", premio: 3000 },
+                { exito: true, texto: "🚗 Vendiste autos deportivos robados en el mercado negro sin problemas.", premio: 2500 },
+                { exito: false, texto: "🚨 Intentaste robar una joyería pero sonó la alarma. ¡La policía te arrestó y pagaste fianza!", multa: 1500 },
+                { exito: false, texto: "🎰 Te metiste a un casino clandestino a hacer trampa y te descubrieron a golpes.", multa: 2000 },
+                { exito: false, texto: "🕵️‍♂️ Tu plan para atracar el furgón blindado falló miserablemente. Perdiste todo tu equipo.", multa: 1000 }
+            ];
+
+            const evento = escenarios[Math.floor(Math.random() * escenarios.length)];
+            const uData = await usersCollection.findOne({ jid: sender });
+            const saldoActual = uData?.soles || 0;
+
+            if (evento.exito) {
+                await usersCollection.updateOne({ jid: sender }, { $inc: { soles: evento.premio } }, { upsert: true });
+                return await sock.sendMessage(from, { text: `🟢 *¡GOLPE EXITOSO!*\n\n@${sender.split('@')[0]} -> ${evento.texto}\n💰 *Ganancia:* +🪙 ${evento.premio.toLocaleString()} soles`, mentions: [sender] }, { quoted: m });
+            } else {
+                const nuevoSaldo = Math.max(-50, saldoActual - evento.multa);
+                await usersCollection.updateOne({ jid: sender }, { $set: { soles: nuevoSaldo } }, { upsert: true });
+                return await sock.sendMessage(from, { text: `🔴 *¡TE ATRAPARON!*\n\n@${sender.split('@')[0]} -> ${evento.texto}\n💸 *Multa pagada:* -🪙 ${evento.multa.toLocaleString()} soles`, mentions: [sender] }, { quoted: m });
+            }
+        }
+
         // ==========================================
         // SISTEMA DE DIVORCIO
         // ==========================================
@@ -687,21 +741,36 @@ async function connectToWhatsApp() {
                 mentions: [sender, target]
             }, { quoted: m });
 
-            setTimeout(async () => {
+        setTimeout(async () => {
                 const juicio = juiciosActivos.get(from);
                 if (!juicio) return;
                 juiciosActivos.delete(from);
 
                 if (juicio.votosSi > juicio.votosNo) {
-                    await usersCollection.updateOne({ jid: juicio.demandado }, { $inc: { soles: -juicio.monto } });
-                    await usersCollection.updateOne({ jid: juicio.demandante }, { $inc: { soles: juicio.monto } });
-                    await sock.sendMessage(from, { text: `⚖️ *VEREDICTO FINAL* ⚖️\n\nCon ${juicio.votosSi} votos a favor y ${juicio.votosNo} en contra, el jurado declara a @${juicio.demandado.split('@')[0]} *CULPABLE*.\n\n🔨 Deberá transferir *🪙 ${juicio.monto} soles* a @${juicio.demandante.split('@')[0]} como indemnización.`, mentions: [juicio.demandado, juicio.demandante] });
+                    // Obtenemos el saldo actual del demandado antes de cobrar
+                    const userDemandado = await usersCollection.findOne({ jid: juicio.demandado });
+                    const saldoActualDemandado = userDemandado?.soles || 0;
+
+                    // Calculamos cuánto se le puede descontar como máximo sin bajar de -50
+                    // Ejemplo: Si tiene 100 soles, le podemos descontar los 5000 completos.
+                    // Si tiene -40 soles, solo le podemos descontar 10 para llegar exactamente a -50.
+                    const maximoDescuentoPermitido = saldoActualDemandado - (-50);
+
+                    // Si ya está en -50 o menos, el descuento real es 0
+                    const descuentoReal = maximoDescuentoPermitido > 0 ? Math.min(juicio.monto, maximoDescuentoPermitido) : 0;
+
+                    if (descuentoReal > 0) {
+                        await usersCollection.updateOne({ jid: juicio.demandado }, { $inc: { soles: -descuentoReal } });
+                        await usersCollection.updateOne({ jid: juicio.demandante }, { $inc: { soles: descuentoReal } });
+                        
+                        await sock.sendMessage(from, { text: `⚖️ *VEREDICTO FINAL* ⚖️\n\nCon ${juicio.votosSi} votos a favor, declaran a @${juicio.demandado.split('@')[0]} *CULPABLE*.\n\n🔨 Como su cuenta tiene límite de deudas, pagó una indemnización parcial de *🪙 ${descuentoReal.toLocaleString()} soles* a @${juicio.demandante.split('@')[0]} (Tope de deuda alcanzado: -50).`, mentions: [juicio.demandado, juicio.demandante] });
+                    } else {
+                        await sock.sendMessage(from, { text: `⚖️ *VEREDICTO FINAL* ⚖️\n\nEl jurado declaró a @${juicio.demandado.split('@')[0]} *CULPABLE*, ¡pero su cuenta está en la ruina total (-50 soles)! No se le pudo quitar más dinero por protección contra bancarrota. 🚫`, mentions: [juicio.demandado] });
+                    }
                 } else {
-                    await sock.sendMessage(from, { text: `⚖️ *VEREDICTO FINAL* ⚖️\n\nCon ${juicio.votosNo} votos por la inocencia y solo ${juicio.votosSi} por la culpabilidad, @${juicio.demandado.split('@')[0]} es declarado *INOCENTE*.\n\n🔨 Caso cerrado. No se pagará indemnización.`, mentions: [juicio.demandado] });
+                    await sock.sendMessage(from, { text: `⚖️ *VEREDICTO FINAL* ⚖️\n\nCon ${juicio.votosNo} votos por la inocencia, @${juicio.demandado.split('@')[0]} es declarado *INOCENTE*.\n\n🔨 Caso cerrado.`, mentions: [juicio.demandado] });
                 }
             }, 300000); // 5 minutos
-            return;
-        }
 
         if (command === 'culpable' || command === 'inocente') {
             const juicio = juiciosActivos.get(from);
@@ -756,7 +825,46 @@ async function connectToWhatsApp() {
                 return await sock.sendMessage(from, { text: '❌ Ocurrió un error al comunicarse con la IA.' }, { quoted: m });
             }
         }
+        
+        if (command === 'topricos' || command === 'ricachones' || command === 'topmille') {
+            try {
+                const topUsers = await usersCollection.find({ soles: { $exists: true } }).sort({ soles: -1 }).limit(10).toArray();
+                if (topUsers.length === 0) return await sock.sendMessage(from, { text: '📊 Aún no hay registros de economía.' }, { quoted: m });
 
+                let txt = '🏆 *TOP 10 - LOS MÁS ADINERADOS* 🏆\n\n';
+                topUsers.forEach((u, i) => {
+                    const medalla = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;
+                    txt += `${medalla} @${u.jid.split('@')[0]} ➡️ *🪙 ${(u.soles || 0).toLocaleString()} soles*\n`;
+                });
+
+                return await sock.sendMessage(from, { text: txt, mentions: topUsers.map(u => u.jid) }, { quoted: m });
+            } catch (err) {
+                return await sock.sendMessage(from, { text: '❌ Error al obtener el ranking de ricos.' }, { quoted: m });
+            }
+        }
+
+        if (command === 'quitarsoles' || command === 'sacarsoles') {
+            if (!esOwner(sender)) return;
+
+            const target = m.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0];
+            const montoQuitar = parseInt(args.filter(a => !a.includes('@'))[0]);
+
+            if (!target || !montoQuitar || isNaN(montoQuitar) || montoQuitar <= 0) {
+                return await sock.sendMessage(from, { text: '⚠️ Uso correcto: *#quitarsoles [monto] [@usuario]*' }, { quoted: m });
+            }
+
+            const uData = await usersCollection.findOne({ jid: target });
+            const saldoActual = uData?.soles || 0;
+            const nuevoSaldo = Math.max(-50, saldoActual - montoQuitar);
+            const descuentoReal = saldoActual - nuevoSaldo;
+
+            await usersCollection.updateOne({ jid: target }, { $set: { soles: nuevoSaldo } }, { upsert: true });
+
+            return await sock.sendMessage(from, { 
+                text: `⚖️ *ADMINISTRACIÓN DE ECONOMÍA* ⚖️\n\nSe le han descontado *🪙 ${descuentoReal.toLocaleString()} soles* a @${target.split('@')[0]}.\nSaldo actual: *🪙 ${nuevoSaldo.toLocaleString()} soles* (Tope -50 respetado).`, 
+                mentions: [target] 
+            }, { quoted: m });
+        }
 
         // ==========================================
         // SISTEMA DE TIENDA Y TRANSFERENCIAS
