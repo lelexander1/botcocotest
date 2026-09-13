@@ -6,6 +6,7 @@ const tiktok = require('../commands/tiktok');
 const hentaiAcciones = require('../commands/hentaiAcciones'); 
 const heist = require('../commands/heist');
 const heistDecision = require('../commands/heistDecision');
+
 const handlers = [economia, moderacion, ia, utilidades, hentaiAcciones, tiktok, heist, heistDecision];
 
 function createState() {
@@ -122,9 +123,7 @@ async function handleMessage(ctx) {
 
     const commandCtx = { ...ctx, body, args, command, messageType };
 
-    // ORDEN DE EJECUCIÓN DE COMANDOS (Añadido hentaiAcciones al final)
-    const handlers = [economia, moderacion, ia, utilidades, hentaiAcciones, tiktok];
-
+    // ORDEN DE EJECUCIÓN DE COMANDOS
     for (const handler of handlers) {
         try {
             const handled = await handler.handleCommand(commandCtx);
