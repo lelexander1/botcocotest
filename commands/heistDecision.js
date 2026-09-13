@@ -6,33 +6,35 @@ async function handleCommand(ctx) {
     let session = heistSessions.get(from);
 
     if (session && session.fase === 'decision_herido') {
-        // Verificar si quien vota es parte del equipo del atraco
+        // Validar que el usuario sea parte del equipo y NO sea el herido
         if (!session.participantes.includes(sender)) {
-            return false; // Si no es del equipo, se ignora su voto
+            return false; 
+        }
+
+        if (sender === session.usuarioHerido) {
+            await sock.sendMessage(from, { text: `⚠️ ¡Estás herido en el suelo y no puedes votar, @${sender.split('@')[0]}! Espera a que tus compañeros decidan tu suerte.`, mentions: [sender] }, { quoted: m });
+            return true;
         }
 
         if (command === 'ayudar' || command === 'abandonar' || command === 'abandonan') {
-            // Inicializar el sistema de votos si aún no existe en la sesión
             if (!session.votos) {
                 session.votos = new Map();
             }
 
-            // Normalizar el voto (si escriben abandonan o abandonar cuenta como lo mismo)
             const votoNormalizado = command === 'ayudar' ? 'ayudar' : 'abandonar';
-            
-            // Registrar o actualizar el voto del participante
             session.votos.set(sender, votoNormalizado);
             
             const totalParticipantes = session.participantes.length;
+            const totalVotosNecesarios = session.votantesRequeridos || (totalParticipantes - 1);
             const votosActuales = session.votos.size;
 
             await sock.sendMessage(from, { 
-                text: `🗳️ Voto registrado de @${sender.split('@')[0]} (${votosActuales}/${totalParticipantes} votos emitidos).`,
+                text: `🗳️ Voto registrado de @${sender.split('@')[0]} (${votosActuales}/${totalVotosNecesarios} votos emitidos).`,
                 mentions: [sender]
             }, { quoted: m });
 
-            // Si todos ya votaron, procesamos el resultado de inmediato
-            if (votosActuales >= totalParticipantes) {
+            // Si ya votaron todos los miembros sanos, cerramos la votación de inmediato
+            if (votosActuales >= totalVotosNecesarios) {
                 clearTimeout(session.votacionTimer);
                 await finalizarVotacionHeist(sock, from, session, usersCollection || economyCollection);
             }
@@ -56,8 +58,8 @@ async function finalizarVotacionHeist(sock, from, session, dbCollection) {
         else votosAbandonar++;
     }
 
-    // Gana la opción con más votos. Si hay empate, gana 'abandonar' por tensión del atraco
-    const decisionGanadora = votosAyudar > votosAbandonar ? 'ayudar' : 'abandonar';
+    // Gana la opción con más votos. Si hay empate, gana 'abandonar'
+    const decisionGanadora = votosAyudar >= votosAbandonar ? 'ayudar' : 'abandonar';
     const totalJugadores = session.participantes.length;
     let mensajeFinal = '';
     let gananciaPorPersona = 0;
@@ -101,7 +103,9 @@ async function finalizarVotacionHeist(sock, from, session, dbCollection) {
     }
 
     const mentions = [...session.participantes];
-    if (session.usuarioHerido) mentions.push(session.usuarioHerido);
+    if (session.usuarioHerido && !mentions.includes(session.usuarioHerido)) {
+        mentions.push(session.usuarioHerido);
+    }
 
     await sock.sendMessage(from, { text: mensajeFinal, mentions });
 }

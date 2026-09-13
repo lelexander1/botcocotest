@@ -63,7 +63,6 @@ async function handleCommand(ctx) {
                 mentions: [sender]
             }, { quoted: m });
 
-            // Si llegan a 4 automáticamente arranca
             if (session.participantes.length === 4) {
                 await iniciarAtraco(sock, from, session, colABuscar);
             }
@@ -116,9 +115,12 @@ async function iniciarAtraco(sock, from, session, dbCollection) {
     const heridoIndex = Math.floor(Math.random() * totalJugadores);
     const usuarioHerido = session.participantes[heridoIndex];
 
+    // Definimos qué miembros son los votantes hábiles (excluyendo al herido)
+    const votantesHabiles = session.participantes.filter(p => p !== usuarioHerido);
+
     textoNarrativo += `⚠️ *¡ALERTA ROJA!* La policía rodeó el perímetro y se desata un tiroteo.\n`;
-    textoNarrativo += `🚑 ¡@${usuarioHerido.split('@')[0]} ha recibido un disparo y está herido en el suelo!\n\n`;
-    textoNarrativo += `⚡ *DECISIÓN CRÍTICA:* Cada miembro del equipo debe votar escribiendo *#ayudar* o *#abandonar*.`;
+    textoNarrativo += `🚑 ¡@${usuarioHerido.split('@')[0]} ha recibido un disparo, está herido y no puede votar!\n\n`;
+    textoNarrativo += `⚡ *DECISIÓN CRÍTICA:* Los demás (${votantesHabiles.length} miembros) deben votar escribiendo *#ayudar* o *#abandonar*.`;
 
     const mentions = [...session.participantes];
     await sock.sendMessage(from, { text: textoNarrativo, mentions });
@@ -126,16 +128,17 @@ async function iniciarAtraco(sock, from, session, dbCollection) {
     session.fase = 'decision_herido';
     session.usuarioHerido = usuarioHerido;
     session.botinActual = botinBase;
+    session.votantesRequeridos = votantesHabiles.length; // Guardamos cuántos votos se necesitan en total
     session.votos = new Map();
 
-    // Temporizador de votación (25 segundos)
+    // Ampliamos el temporizador a 40 segundos para dar tiempo a leer y debatir
     session.votacionTimer = setTimeout(async () => {
         let activeSession = heistSessions.get(from);
         if (activeSession && activeSession.fase === 'decision_herido') {
             heistSessions.delete(from);
             await sock.sendMessage(from, { text: '⏰ El tiempo de votación terminó. El atraco fracasó por indecisión y la policía los atrapó.' });
         }
-    }, 25000);
+    }, 40000);
 }
 
 module.exports = { handleCommand, heistSessions };
