@@ -39,13 +39,15 @@ async function handleCommand(ctx) {
         try {
             const randomPid = Math.floor(Math.random() * 20);
 
-            // Leyendo las credenciales de forma segura desde las variables de entorno de Render
+            // Añadimos la etiqueta 'animated' junto a la búsqueda para priorizar clips o GIFs en la API
+            const queryTags = `${command} animated`;
+
             const response = await axios.get('https://api.rule34.xxx/index.php', {
                 params: {
                     page: 'dapi',
                     s: 'post',
                     q: 'index',
-                    tags: command,
+                    tags: queryTags,
                     pid: randomPid,
                     limit: 100,
                     json: 1,
@@ -58,14 +60,15 @@ async function handleCommand(ctx) {
             const posts = response.data;
 
             if (posts && Array.isArray(posts) && posts.length > 0) {
-                const postsValidos = posts.filter(p => p.file_url && !p.file_url.endsWith('.webm') && !p.file_url.endsWith('.mp4'));
+                // Filtramos estrictamente para que la URL termine en .gif
+                const postsValidos = posts.filter(p => p.file_url && p.file_url.toLowerCase().endsWith('.gif'));
                 
                 if (postsValidos.length > 0) {
                     const randomPost = postsValidos[Math.floor(Math.random() * postsValidos.length)];
-                    const imageUrl = randomPost.file_url;
+                    const gifUrl = randomPost.file_url;
 
                     await sock.sendMessage(from, { 
-                        image: { url: imageUrl }, 
+                        image: { url: gifUrl }, // WhatsApp procesa y reproduce los .gif correctamente si se envían como imagen animada
                         caption: textoAccion,
                         mentions: mentions
                     }, { quoted: m });
@@ -74,8 +77,8 @@ async function handleCommand(ctx) {
                 }
             }
 
-            console.log('Rule34 autenticado no devolvió posts para la tag:', command);
-            await sock.sendMessage(from, { text: '❌ No se encontró una imagen válida en este intento, prueba de nuevo.', mentions }, { quoted: m });
+            console.log('Rule34 no devolvió GIFs válidos para la tag:', command);
+            await sock.sendMessage(from, { text: '❌ No se encontró un GIF válido en este intento, prueba de nuevo.', mentions }, { quoted: m });
             return true;
 
         } catch (err) {
