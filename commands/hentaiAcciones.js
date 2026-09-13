@@ -37,8 +37,9 @@ async function handleCommand(ctx) {
         const mentions = [sender, target];
 
         try {
-            const randomPid = Math.floor(Math.random() * 10);
-            const queryTags = `${command} animated sort:score score:>=10 rating:explicit`;
+            const randomPid = Math.floor(Math.random() * 15);
+            // Búsqueda flexible enfocada netamente en la acción y el formato animado
+            const queryTags = `${command} animated`;
 
             const response = await axios.get('https://api.rule34.xxx/index.php', {
                 params: {
@@ -64,7 +65,6 @@ async function handleCommand(ctx) {
                     const randomPost = postsValidos[Math.floor(Math.random() * postsValidos.length)];
                     const gifUrl = randomPost.file_url;
 
-                    // Descargamos el buffer del GIF directamente para enviarlo como animación real
                     const gifBufferResponse = await axios.get(gifUrl, { responseType: 'arraybuffer' });
                     const buffer = Buffer.from(gifBufferResponse.data);
 
@@ -80,8 +80,40 @@ async function handleCommand(ctx) {
                 }
             }
 
-            console.log('Rule34 no devolvió GIFs válidos para la tag:', command);
-            await sock.sendMessage(from, { text: '❌ No se encontró un GIF válido en este intento, prueba de nuevo.', mentions }, { quoted: m });
+            // Respaldo de emergencia sin tag animated por si la categoría es escasa
+            const responseFallback = await axios.get('https://api.rule34.xxx/index.php', {
+                params: {
+                    page: 'dapi',
+                    s: 'post',
+                    q: 'index',
+                    tags: command,
+                    limit: 50,
+                    json: 1,
+                    user_id: process.env.RULE34_USER_ID,
+                    api_key: process.env.RULE34_API_KEY
+                }
+            });
+
+            const postsFallback = responseFallback.data;
+            if (postsFallback && Array.isArray(postsFallback) && postsFallback.length > 0) {
+                const validosFb = postsFallback.filter(p => p.file_url && p.file_url.toLowerCase().endsWith('.gif'));
+                if (validosFb.length > 0) {
+                    const randomPostFb = validosFb[Math.floor(Math.random() * validosFb.length)];
+                    const bufferFb = (await axios.get(randomPostFb.file_url, { responseType: 'arraybuffer' })).data;
+
+                    await sock.sendMessage(from, { 
+                        video: Buffer.from(bufferFb), 
+                        gifPlayback: true,
+                        mimetype: 'image/gif',
+                        caption: textoAccion, 
+                        mentions 
+                    }, { quoted: m });
+                    return true;
+                }
+            }
+
+            console.log('Rule34 no devolvió GIFs para la tag:', command);
+            await sock.sendMessage(from, { text: '❌ No se encontró ningún GIF animado disponible en este momento.', mentions }, { quoted: m });
             return true;
 
         } catch (err) {
