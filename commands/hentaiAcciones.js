@@ -37,8 +37,8 @@ async function handleCommand(ctx) {
         const mentions = [sender, target];
 
         try {
-            const randomPid = Math.floor(Math.random() * 20);
-            const queryTags = `${command} animated`;
+            const randomPid = Math.floor(Math.random() * 10);
+            const queryTags = `${command} animated sort:score score:>=10 rating:explicit`;
 
             const response = await axios.get('https://api.rule34.xxx/index.php', {
                 params: {
@@ -64,10 +64,14 @@ async function handleCommand(ctx) {
                     const randomPost = postsValidos[Math.floor(Math.random() * postsValidos.length)];
                     const gifUrl = randomPost.file_url;
 
-                    // Enviamos como video con gifPlayback para forzar la reproducción automática en bucle en el celular
+                    // Descargamos el buffer del GIF directamente para enviarlo como animación real
+                    const gifBufferResponse = await axios.get(gifUrl, { responseType: 'arraybuffer' });
+                    const buffer = Buffer.from(gifBufferResponse.data);
+
                     await sock.sendMessage(from, { 
-                        video: { url: gifUrl }, 
+                        video: buffer, 
                         gifPlayback: true,
+                        mimetype: 'image/gif',
                         caption: textoAccion,
                         mentions: mentions
                     }, { quoted: m });
