@@ -89,7 +89,7 @@ function esOwner(sender) {
 async function handleCommand(ctx) {
     const {
         sock, m, from, sender, args, command, messageType,
-        usersCollection, remindersCollection,
+        usersCollection, groupsCollection, remindersCollection, // <--- AQUÍ DEBE ESTAR
         bankCollection, groupStatsCollection, state, deps, esOwner
     } = ctx;
 
