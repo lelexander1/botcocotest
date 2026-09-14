@@ -81,7 +81,7 @@ async function handleCommand(ctx) {
             const botNum = botFullId.replace(/[^0-9]/g, '');
             
             // 🛑 PON EL NÚMERO DE TU BOT AQUÍ (Ejemplo: "51999999999") para que nunca falle
-            const numeroFijoBot = ""; 
+            const numeroFijoBot = "51983305307"; 
             
             const isBotProfile = (targetNum && botNum && targetNum === botNum) || (numeroFijoBot && targetNum === numeroFijoBot);
 
