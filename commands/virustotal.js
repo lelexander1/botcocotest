@@ -1,7 +1,6 @@
 const axios = require('axios');
 
-// Reemplaza esto con tu API Key gratuita de VirusTotal o guárdala en tus variables de entorno (process.env.VT_API_KEY)
-const VT_API_KEY = process.env.VT_API_KEY || 'TU_API_KEY_DE_VIRUSTOTAL';
+const VT_API_KEY = process.env.VT_API_KEY;
 
 async function handleCommand(ctx) {
     const { sock, m, from, sender, args, command } = ctx;
@@ -14,19 +13,17 @@ async function handleCommand(ctx) {
             return true;
         }
 
-        if (VT_API_KEY === '1b578c94a7e494debc503e5775fc94016273eaf7fa9429bd9294a44f3b177e3a') {
-            await sock.sendMessage(from, { text: '❌ La API Key de VirusTotal no ha sido configurada por el desarrollador.' }, { quoted: m });
-            return true;
-        }
-
         await sock.sendMessage(from, { text: `🔍 Analizando URL en VirusTotal, por favor espera un momento...` }, { quoted: m });
 
         try {
-            // VirusTotal requiere que las URLs se codifiquen en base64 sin padding (=) para la consulta de análisis
-            const encodedUrl = Buffer.from(queryUrl).toString('base64').replace(/=/g, '');
+            // Codificación Base64 URL-safe obligatoria para la API v3 de VirusTotal
+            const encodedUrl = Buffer.from(queryUrl)
+                .toString('base64')
+                .replace(/\+/g, '-')
+                .replace(/\//g, '_')
+                .replace(/=+$/, '');
             
             const response = await axios.get(`https://www.virustotal.com/api/v3/urls/${encodedUrl}`, {
-                
                 headers: { 'x-apikey': VT_API_KEY }
             });
 
@@ -54,8 +51,8 @@ async function handleCommand(ctx) {
             return true;
 
         } catch (err) {
-            console.error('Error al consultar VirusTotal:', err.response?.data || err.message);
-            await sock.sendMessage(from, { text: '❌ Ocurrió un error al consultar la API de VirusTotal o la URL no es válida.' }, { quoted: m });
+            console.error('Error detallado de VirusTotal:', err.response?.data || err.message);
+            await sock.sendMessage(from, { text: '❌ Ocurrió un error al consultar la API de VirusTotal o la URL no está registrada en su base de datos.' }, { quoted: m });
             return true;
         }
     }
