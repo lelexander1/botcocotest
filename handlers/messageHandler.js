@@ -11,7 +11,7 @@ const zombie = require('../commands/zombie');
 const zombieAcciones = require('../commands/zombieAcciones');
 const perfil = require('../commands/perfil');
 
-const handlers = [economia, moderacion, ia, perfil, utilidades, tiktok, hentaiAcciones, heist, heistDecision, virustotal, zombie, zombieAcciones, ...];
+const handlers = [economia, moderacion, ia, perfil, utilidades, tiktok, hentaiAcciones, heist, heistDecision, virustotal, zombie, zombieAcciones];
 
 
 function createState() {
