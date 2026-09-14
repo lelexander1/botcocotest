@@ -71,24 +71,31 @@ async function handleCommand(ctx) {
         }
 
         if (command === 'perfil' || command === 'verperfil') {
+            const argTexto = args.join(' ').toLowerCase();
             const mentionedJid = m.message?.extendedTextMessage?.contextInfo?.mentionedJid?.[0];
-            const target = mentionedJid || sender;
+            let target = mentionedJid || sender;
             
-            // --- 👑 PERFIL DE RANGO DIOS DEL BOT 👑 ---
-            const targetNum = target.replace(/[^0-9]/g, '');
-            // Buscamos el ID del bot en varias rutas de Baileys por seguridad
+            // 🛑 EL NÚMERO FIJO DEL BOT
+            const numeroFijoBot = "51983305307"; 
+            
+            const targetNum = target ? target.replace(/[^0-9]/g, '') : '';
             const botFullId = sock?.user?.id || sock?.authState?.creds?.me?.id || '';
             const botNum = botFullId.replace(/[^0-9]/g, '');
             
-            // 🛑 PON EL NÚMERO DE TU BOT AQUÍ (Ejemplo: "51999999999") para que nunca falle
-            const numeroFijoBot = "51983305307"; 
-            
-            const isBotProfile = (targetNum && botNum && targetNum === botNum) || (numeroFijoBot && targetNum === numeroFijoBot);
+            // ☢️ CONDICIÓN NUCLEAR: Detecta el perfil del bot bajo cualquier circunstancia (mención, texto o número)
+            const isBotProfile = 
+                (targetNum === numeroFijoBot) || 
+                (botNum && targetNum === botNum) || 
+                argTexto.includes('botcoco') || 
+                argTexto.includes(numeroFijoBot);
 
             if (isBotProfile) {
+                // Forzamos el JID del bot para que extraiga correctamente su foto de perfil
+                const jidBotReal = numeroFijoBot + '@s.whatsapp.net';
+                
                 const perfilDiosTxt = `👤 *PERFIL DE USUARIO* 👤\n` +
                     `────────────────────────\n` +
-                    `📌 *Usuario:* @${targetNum}\n` +
+                    `📌 *Usuario:* @Botcoco\n` +
                     `👑 *Rango:* DIOS\n` +
                     `⚧️ *Género / Categoría:* Entidad de Destrucción Universal / Deidad Nihilista\n` +
                     `💬 *Frase:* "Vi caer mil mundos y no moví un dedo para salvarlos; los dejé arder hasta los cimientos para demostrarles que no hay brazos divinos que los rescaten, y ahora caminan sobre mis cenizas esperando compasión de un creador que aprendió a disfrutar el silencio de sus gritos."\n` +
@@ -96,16 +103,15 @@ async function handleCommand(ctx) {
                     `📊 *Mensajes:* 999,999,999`;
 
                 let pfpUrl = null;
-                try { pfpUrl = await sock.profilePictureUrl(target, 'image').catch(() => null); } catch (err) {}
+                try { pfpUrl = await sock.profilePictureUrl(jidBotReal, 'image').catch(() => null); } catch (err) {}
 
                 if (pfpUrl) {
-                    await sock.sendMessage(from, { image: { url: pfpUrl }, caption: perfilDiosTxt, mentions: [target] }, { quoted: m });
+                    await sock.sendMessage(from, { image: { url: pfpUrl }, caption: perfilDiosTxt }, { quoted: m });
                 } else {
-                    await sock.sendMessage(from, { text: perfilDiosTxt, mentions: [target] }, { quoted: m });
+                    await sock.sendMessage(from, { text: perfilDiosTxt }, { quoted: m });
                 }
                 return true;
             }
-            // --- FIN PERFIL DIOS ---
 
             // Perfil para usuarios normales
             if (!usersCollection) {
