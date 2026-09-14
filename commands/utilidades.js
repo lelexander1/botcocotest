@@ -624,64 +624,6 @@ async function handleCommand(ctx) {
         return true;
     }
 
-    if (command === 'perfil' || command === 'verperfil') {
-        const target = m.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0] || m.message.extendedTextMessage?.contextInfo?.participant || sender;
-        const uData = await usersCollection.findOne({ jid: target }) || {};
-        const statsData = from.endsWith('@g.us') ? (await groupStatsCollection.findOne({ jid: target, groupId: from }) || {}) : {};
-        
-        let parejas = uData.pareja || [];
-        if (typeof parejas === 'string') parejas = [parejas];
-        let nombrePareja = parejas.length > 0 ? parejas.map(p => `@${p.split('@')[0]} 💍`).join(', ') : 'Soltero/a 💔';
-
-        const redes = uData.redes || {};
-        let redesTxt = '';
-        if (redes.facebook) redesTxt += `📘 *Facebook:* ${redes.facebook}\n`;
-        if (redes.instagram) redesTxt += `📸 *Instagram:* ${redes.instagram}\n`;
-        if (redes.discord) redesTxt += `🎮 *Discord:* ${redes.discord}\n`;
-        if (redes.spotify) redesTxt += `🎧 *Spotify:* ${redes.spotify}\n`;
-        if (redes.x) redesTxt += `✖️ *X:* ${redes.x}\n`;
-
-        const perfilTxt = `👤 *PERFIL DE USUARIO* 👤\n` +
-            `────────────────────────\n` +
-            `📌 *Usuario:* @${target.split('@')[0]}\n` +
-            `🎂 *Edad:* ${uData.edad ? uData.edad + ' años' : 'No especificada'}\n` +
-            `⚧️ *Género:* ${uData.genero || 'No especificado'}\n` +
-            `💬 *Frase:* "${uData.frase || 'Sin frase'}"\n` +
-            `💍 *Estado Civil:* ${nombrePareja}\n` +
-            `🎂 *Cumpleaños:* ${uData.cumple || 'No registrado'}\n` +
-            `🪙 *Soles:* ${uData.soles || 0}\n` +
-            `📊 *Mensajes:* ${statsData.messageCount || 0}\n` +
-            (redesTxt ? `\n🌐 *REDES SOCIALES:*\n${redesTxt}` : '');
-
-        const mentions = [target, ...parejas].filter(Boolean);
-
-        // Intento seguro de obtener la foto de perfil con manejo de errores limpio
-        let pfpUrl = null;
-        try {
-            pfpUrl = await sock.profilePictureUrl(target, 'image').catch(() => null);
-        } catch (err) {
-            pfpUrl = null;
-        }
-
-        try {
-            if (pfpUrl) {
-                // Si logra obtener una URL válida de imagen
-                await sock.sendMessage(from, { image: { url: pfpUrl }, caption: perfilTxt, mentions: mentions }, { quoted: m });
-            } else {
-                // Si no tiene foto o falló la consulta, enviamos solo texto garantizado
-                await sock.sendMessage(from, { text: perfilTxt, mentions: mentions }, { quoted: m });
-            }
-        } catch (sendErr) {
-            console.error('Error enviando perfil con imagen, recurriendo a texto plano:', sendErr);
-            await sock.sendMessage(from, { text: perfilTxt, mentions: mentions }, { quoted: m });
-        }
-
-        if (uData.stickerBase64) {
-            try { await sock.sendMessage(from, { sticker: Buffer.from(uData.stickerBase64, 'base64') }); } catch {}
-        }
-        return true;
-    }
-
     if (command === 'recordatorio' || command === 'rec' || command === 'recordatorio-grupo' || command === 'recg') {
         const esGrupal = command.includes('grupo') || command === 'recg';
         const destinoJid = esGrupal ? from : sender;
