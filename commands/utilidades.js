@@ -160,7 +160,10 @@ async function handleCommand(ctx) {
         `🎨 *Multimedia:*\n` +
         `   *#s* - Convierte foto/video a sticker\n` +
         `   *#gif [texto]* - Busca un GIF y lo hace sticker\n` +
-        `   *#toimg* - Convierte sticker a imagen`;
+        `   *#toimg* - Convierte sticker a imagen`+
+        `🛡️ *Seguridad y Análisis*\n`+
+        `🔹 *#vt [enlace]* - Analiza una URL en busca de virus o malware con VirusTotal.\n`;
+        
 
     await sock.sendMessage(from, { text: menu }, { quoted: m });
     return true;
