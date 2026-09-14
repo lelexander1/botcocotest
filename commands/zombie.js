@@ -15,7 +15,6 @@ async function handleCommand(ctx) {
         const subCommand = args[0]?.toLowerCase();
         let session = zombieSessions.get(from);
 
-        // INICIAR LOBBY
         if (!subCommand || subCommand === 'iniciar') {
             if (session) {
                 await sock.sendMessage(from, { text: '⚠️ Ya hay una partida de supervivencia organizándose. Usa *#zombie unirse [rol]*.' }, { quoted: m });
@@ -24,7 +23,7 @@ async function handleCommand(ctx) {
 
             zombieSessions.set(from, {
                 lider: sender,
-                jugadores: new Map(), // Map de sender -> datos del jugador
+                jugadores: new Map(),
                 faseActual: 0,
                 estado: 'reclutamiento',
                 progresoFase: 0,
@@ -41,7 +40,6 @@ async function handleCommand(ctx) {
             return true;
         }
 
-        // UNIRSE AL JUEGO
         if (subCommand === 'unirse') {
             if (!session || session.estado !== 'reclutamiento') return false;
 
@@ -51,7 +49,6 @@ async function handleCommand(ctx) {
                 return true;
             }
 
-            // Verificar si el rol ya fue tomado
             for (let [jugador, datos] of session.jugadores.entries()) {
                 if (datos.rolKey === rolElegido) {
                     await sock.sendMessage(from, { text: `⚠️ El rol de *${ROLES_INFO[rolElegido].nombre}* ya fue tomado por alguien más.` }, { quoted: m });
@@ -64,7 +61,6 @@ async function handleCommand(ctx) {
                 return true;
             }
 
-            // Cobrar entrada
             if (db) {
                 const userEco = await db.findOne({ jid: sender });
                 const saldo = userEco?.soles || userEco?.wallet || 0;
@@ -90,7 +86,6 @@ async function handleCommand(ctx) {
             return true;
         }
 
-        // COMENZAR LA PARTIDA
         if (subCommand === 'comenzar') {
             if (!session || session.estado !== 'reclutamiento') return false;
             if (session.lider !== sender) {
@@ -100,7 +95,7 @@ async function handleCommand(ctx) {
 
             session.estado = 'jugando';
             session.faseActual = 1;
-            session.pozo = 200000; // El premio mayor al llegar al Callao
+            session.pozo = 200000;
 
             let textoFase1 = `📍 *FASE 1: EL DESPERTAR EN LA MOLINA*\n\n`;
             textoFase1 += `El refugio ha sido comprometido. La bruma cubre las calles de La Molina y deben salir hacia Javier Prado.\n\n`;
