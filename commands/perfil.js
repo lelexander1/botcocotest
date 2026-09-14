@@ -5,17 +5,18 @@ async function handleCommand(ctx) {
         const mentionedJid = m.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0];
         const target = mentionedJid || sender;
         
-        // Limpiamos los IDs para comparar solo los números (ej: 51999999999@s.whatsapp.net -> 51999999999)
-        const targetClean = target.split('@')[0];
-        const botClean = sock.user.id.split(':')[0].split('@')[0];
+        // Extraemos únicamente los dígitos numéricos de ambos JIDs para evitar cruces con sufijos o dispositivos (:1)
+        const targetNum = target ? target.replace(/[^0-9]/g, '') : '';
+        const botFullId = sock?.user?.id || '';
+        const botNum = botFullId.replace(/[^0-9]/g, '');
 
-        // Detectar si están consultando al propio bot (por mención o por ID directo)
-        const isBotProfile = targetClean === botClean;
+        // Validamos si el número consultado es el mismo número del bot
+        const isBotProfile = targetNum && botNum && targetNum === botNum;
 
         if (isBotProfile) {
             const perfilDiosTxt = `👤 *PERFIL DE USUARIO* 👤\n` +
                 `────────────────────────\n` +
-                `📌 *Usuario:* @${targetClean}\n` +
+                `📌 *Usuario:* @${targetNum}\n` +
                 `👑 *Rango:* DIOS\n` +
                 `⚧️ *Género / Categoría:* Entidad de Destrucción Universal / Deidad Nihilista\n` +
                 `💬 *Frase:* "Vi caer mil mundos y no moví un dedo para salvarlos; los dejé arder hasta los cimientos para demostrarles que no hay brazos divinos que los rescaten, y ahora caminan sobre mis cenizas esperando compasión de un creador que aprendió a disfrutar el silencio de sus gritos."\n` +
@@ -43,7 +44,7 @@ async function handleCommand(ctx) {
         
         let usuarioTxt = `👤 *PERFIL DE USUARIO* 👤\n` +
             `────────────────────────\n` +
-            `📌 *Usuario:* @${targetClean}\n` +
+            `📌 *Usuario:* @${target.split('@')[0]}\n` +
             `🎂 *Edad:* ${uData.edad || 'No especificada'}\n` +
             `⚧️ *Género:* ${uData.genero || 'No especificado'}\n` +
             `💬 *Frase:* "${uData.frase || 'Sin frase'}"\n` +
