@@ -21,27 +21,49 @@ async function handleCommand(ctx) {
                 return true;
             }
 
-            zombieSessions.set(from, {
+            const nuevaSesion = {
                 lider: sender,
                 jugadores: new Map(),
                 faseActual: 0,
                 estado: 'reclutamiento',
                 progresoFase: 0,
-                pozo: 0
-            });
+                pozo: 0,
+                dbRef: db
+            };
+
+            zombieSessions.set(from, nuevaSesion);
 
             let texto = `🧟‍♂️ *¡LA FIEBRE DE LA BRUMA HA LLEGADO!* 🧟‍♀️\n\n`;
-            texto += `Lima ha caído. La evacuación es en el Callao.\n💰 *Entrada:* 5,000 soles al pozo.\n🏆 *Premio:* 200,000 soles a los sobrevivientes.\n\n`;
+            texto += `Lima ha caído. La evacuación es en el Callao.\n👥 Se necesitan *4 sobrevivientes* (o iniciará automáticamente en 5 minutos).\n`;
+            texto += `💰 *Entrada:* 5,000 soles al pozo.\n🏆 *Premio:* 100,000 soles a los sobrevivientes.\n💀 *Modo:* ¡A todo o nada (si mueres pierdes todo tu dinero)!\n\n`;
             texto += `*ROLES DISPONIBLES:*\n`;
             texto += `🔫 *Mateo*: Ex-militar. Tanque.\n💉 *Valeria*: Paramédica. Healer.\n🔧 *Renzo*: Ingeniero. Especialista.\n🎒 *Lucia*: Cazadora. Loot (Frágil).\n\n`;
             texto += `💬 Escribe *#zombie unirse [rol]* (Ej: #zombie unirse renzo) para entrar.`;
 
             await sock.sendMessage(from, { text: texto }, { quoted: m });
+
+            // Temporizador de 5 minutos (300,000 ms) por si no se completan los 4
+            nuevaSesion.timeoutInicio = setTimeout(async () => {
+                let currentSession = zombieSessions.get(from);
+                if (currentSession && currentSession.estado === 'reclutamiento') {
+                    if (currentSession.jugadores.size > 0) {
+                        await sock.sendMessage(from, { text: `⏰ *¡TIEMPO AGOTADO!* No se completaron los 4 cupos. El convoy arranca de emergencia con los ${currentSession.jugadores.size} sobrevivientes inscritos.` });
+                        await arrancarJuego(sock, from, currentSession);
+                    } else {
+                        zombieSessions.delete(from);
+                        await sock.sendMessage(from, { text: `⏰ La sala de supervivencia expiró por falta de jugadores.` });
+                    }
+                }
+            }, 300000);
+
             return true;
         }
 
         if (subCommand === 'unirse') {
-            if (!session || session.estado !== 'reclutamiento') return false;
+            if (!session || session.estado !== 'reclutamiento') {
+                await sock.sendMessage(from, { text: '❌ No hay ninguna sala de supervivencia abierta para unirse.' }, { quoted: m });
+                return true;
+            }
 
             const rolElegido = args[1]?.toLowerCase();
             if (!ROLES_INFO[rolElegido]) {
@@ -83,30 +105,45 @@ async function handleCommand(ctx) {
                 text: `✅ @${sender.split('@')[0]} se ha unido como *${ROLES_INFO[rolElegido].nombre}*.\nSobrevivientes listos: ${session.jugadores.size}/4.`,
                 mentions: [sender]
             }, { quoted: m });
+
+            // Si se completan exactamente los 4 cupos, arranca de inmediato y cancela el temporizador
+            if (session.jugadores.size === 4) {
+                clearTimeout(session.timeoutInicio);
+                await arrancarJuego(sock, from, session);
+            }
             return true;
         }
 
         if (subCommand === 'comenzar') {
             if (!session || session.estado !== 'reclutamiento') return false;
             if (session.lider !== sender) {
-                await sock.sendMessage(from, { text: '⚠️ Solo el líder del grupo puede iniciar la huida.' }, { quoted: m });
+                await sock.sendMessage(from, { text: '⚠️ Solo el líder del grupo puede iniciar la huida antes.' }, { quoted: m });
+                return true;
+            }
+            if (session.jugadores.size === 0) {
+                await sock.sendMessage(from, { text: '⚠️ No hay jugadores en el equipo todavía.' }, { quoted: m });
                 return true;
             }
 
-            session.estado = 'jugando';
-            session.faseActual = 1;
-            session.pozo = 200000;
-
-            let textoFase1 = `📍 *FASE 1: EL DESPERTAR EN LA MOLINA*\n\n`;
-            textoFase1 += `El refugio ha sido comprometido. La bruma cubre las calles de La Molina y deben salir hacia Javier Prado.\n\n`;
-            textoFase1 += `⚠️ *Evento:* Un grupo de sobrevivientes paranoicos bloquea la reja principal.\n`;
-            textoFase1 += `💬 Usa *#accion [lo que haces]* para resolver la situación, o *#saquear* para buscar suministros.`;
-
-            await sock.sendMessage(from, { text: textoFase1 }, { quoted: m });
+            clearTimeout(session.timeoutInicio);
+            await arrancarJuego(sock, from, session);
             return true;
         }
     }
     return false;
+}
+
+async function arrancarJuego(sock, from, session) {
+    session.estado = 'jugando';
+    session.faseActual = 1;
+    session.pozo = 100000; // Premio ajustado a 100,000 soles
+
+    let textoFase1 = `📍 *FASE 1: EL DESPERTAR EN LA MOLINA*\n\n`;
+    textoFase1 += `El refugio ha sido comprometido. La bruma cubre las calles y deben salir hacia Javier Prado con ${session.jugadores.size} miembro(s).\n\n`;
+    textoFase1 += `⚠️ *Evento:* Un grupo de sobrevivientes paranoicos bloquea la reja principal.\n`;
+    textoFase1 += `💬 Usa *#accion [lo que haces]* para resolver la situación, o *#saquear* para buscar suministros.`;
+
+    await sock.sendMessage(from, { text: textoFase1 });
 }
 
 module.exports = { handleCommand, zombieSessions, ROLES_INFO };

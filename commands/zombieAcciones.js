@@ -86,15 +86,28 @@ async function handleCommand(ctx) {
 async function verificarMuerte(sock, from, sender, session, jugador) {
     if (jugador.vida <= 0) {
         jugador.vivo = false;
+
+        // Castigo a todo o nada: Pierde todo su dinero actual en la base de datos
+        if (session.dbRef) {
+            try {
+                await session.dbRef.updateOne(
+                    { jid: sender },
+                    { $set: { soles: 0 } }
+                );
+            } catch (err) {
+                console.error('Error aplicando castigo de muerte en DB:', err);
+            }
+        }
+
         await sock.sendMessage(from, { 
-            text: `💀 *¡@${sender.split('@')[0]} HA MUERTO!* Ha sido devorado por la horda. Pierde todo su dinero y queda fuera de la partida.`,
+            text: `💀 *¡@${sender.split('@')[0]} HA MUERTO!* Ha sido devorado por la horda. Al ser un juego a todo o nada, *ha perdido todo su dinero* y queda fuera de la partida.`,
             mentions: [sender] 
         });
-        // Si todos mueren, la partida termina
+
         let vivos = Array.from(session.jugadores.values()).filter(j => j.vivo).length;
         if (vivos === 0) {
             zombieSessions.delete(from);
-            await sock.sendMessage(from, { text: `☠️ *FIN DEL JUEGO.* Todo el equipo ha sido aniquilado. Lima se queda con sus almas.` });
+            await sock.sendMessage(from, { text: `☠️ *FIN DEL JUEGO.* Todo el equipo ha perecido en las calles de Lima. ¡Banca rota para todos!` });
         }
     }
 }
