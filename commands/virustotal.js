@@ -14,7 +14,7 @@ async function handleCommand(ctx) {
             return true;
         }
 
-        if (VT_API_KEY === 'TU_API_KEY_DE_VIRUSTOTAL') {
+        if (VT_API_KEY === '1b578c94a7e494debc503e5775fc94016273eaf7fa9429bd9294a44f3b177e3a') {
             await sock.sendMessage(from, { text: '❌ La API Key de VirusTotal no ha sido configurada por el desarrollador.' }, { quoted: m });
             return true;
         }
@@ -26,6 +26,7 @@ async function handleCommand(ctx) {
             const encodedUrl = Buffer.from(queryUrl).toString('base64').replace(/=/g, '');
             
             const response = await axios.get(`https://www.virustotal.com/api/v3/urls/${encodedUrl}`, {
+                
                 headers: { 'x-apikey': VT_API_KEY }
             });
 
