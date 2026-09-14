@@ -151,6 +151,13 @@ async function handleCommand(ctx) {
         `   *#heist comenzar* - El líder arranca el golpe de inmediato\n` +
         `   *#ayudar* / *#abandonar* - Vota durante la crisis del tiroteo\n` +
         `   *#denuncairrobo* - Denuncia el atraco en los primeros 2 min para arrestar a la banda\n\n` +
+        `🧟‍♂️ *Supervivencia RPG (La Bruma):*\n` +
+        `   *#zombie iniciar* - Crea una sala de supervivencia\n` +
+        `   *#zombie unirse [rol]* - Únete al equipo (Costo: 5,000 soles)\n` +
+        `   *#zombie comenzar* - El líder arranca la partida\n` +
+        `   *#accion [texto]* - Ejecuta tu movimiento de rol\n` +
+        `   *#saquear* - Busca suministros (con riesgo)\n` +
+        `   *#estado* - Revisa tu vida e inventario\n\n` +
         `⚖️ *Moderación y Justicia:*\n` +
         `   *#juicio [@us] [monto] [motivo]* - Demanda a alguien\n` +
         `   *#mutear [@us] [min] / #fianza* - Sistema de cárcel\n` +
@@ -160,10 +167,9 @@ async function handleCommand(ctx) {
         `🎨 *Multimedia:*\n` +
         `   *#s* - Convierte foto/video a sticker\n` +
         `   *#gif [texto]* - Busca un GIF y lo hace sticker\n` +
-        `   *#toimg* - Convierte sticker a imagen`+
-        `🛡️ *Seguridad y Análisis*\n`+
-        `🔹 *#vt [enlace]* - Analiza una URL en busca de virus o malware con VirusTotal.\n`;
-        
+        `   *#toimg* - Convierte sticker a imagen\n\n` +
+        `🛡️ *Seguridad y Análisis:*\n` +
+        `   *#vt [enlace/hash]* - Analiza una URL o archivo con VirusTotal`;
 
     await sock.sendMessage(from, { text: menu }, { quoted: m });
     return true;

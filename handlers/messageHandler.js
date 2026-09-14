@@ -7,8 +7,11 @@ const hentaiAcciones = require('../commands/hentaiAcciones');
 const heist = require('../commands/heist');
 const heistDecision = require('../commands/heistDecision');
 const virustotal = require('../commands/virustotal');
+const zombie = require('../commands/zombie');
+const zombieAcciones = require('../commands/zombieAcciones');
 
-const handlers = [economia, moderacion, ia, utilidades, tiktok, hentaiAcciones, heist, heistDecision, virustotal];
+const handlers = [economia, moderacion, ia, utilidades, tiktok, hentaiAcciones, heist, heistDecision, virustotal, zombie, zombieAcciones];
+
 
 function createState() {
     return {
