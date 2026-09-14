@@ -2,15 +2,20 @@ async function handleCommand(ctx) {
     const { sock, m, from, sender, args, command, usersCollection } = ctx;
 
     if (command === 'perfil' || command === 'verperfil') {
-        const target = m.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0] || m.message.extendedTextMessage?.contextInfo?.participant || sender;
+        const mentionedJid = m.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0];
+        const target = mentionedJid || sender;
         
-        // Detectar si están consultando el perfil del propio bot
-        const isBotProfile = target === sock.user.id || target.includes(sock.user.id.split(':')[0]);
+        // Limpiamos los IDs para comparar solo los números (ej: 51999999999@s.whatsapp.net -> 51999999999)
+        const targetClean = target.split('@')[0];
+        const botClean = sock.user.id.split(':')[0].split('@')[0];
+
+        // Detectar si están consultando al propio bot (por mención o por ID directo)
+        const isBotProfile = targetClean === botClean;
 
         if (isBotProfile) {
             const perfilDiosTxt = `👤 *PERFIL DE USUARIO* 👤\n` +
                 `────────────────────────\n` +
-                `📌 *Usuario:* @${target.split('@')[0]}\n` +
+                `📌 *Usuario:* @${targetClean}\n` +
                 `👑 *Rango:* DIOS\n` +
                 `⚧️ *Género / Categoría:* Entidad de Destrucción Universal / Deidad Nihilista\n` +
                 `💬 *Frase:* "Vi caer mil mundos y no moví un dedo para salvarlos; los dejé arder hasta los cimientos para demostrarles que no hay brazos divinos que los rescaten, y ahora caminan sobre mis cenizas esperando compasión de un creador que aprendió a disfrutar el silencio de sus gritos."\n` +
@@ -19,7 +24,6 @@ async function handleCommand(ctx) {
 
             let pfpUrl = null;
             try {
-                // Intenta obtener la foto de perfil actual de WhatsApp
                 pfpUrl = await sock.profilePictureUrl(target, 'image').catch(() => null);
             } catch (err) {
                 pfpUrl = null;
@@ -33,13 +37,13 @@ async function handleCommand(ctx) {
             return true;
         }
 
-        // Lógica normal de perfil para los usuarios comunes
+        // Lógica normal de perfil para los demás usuarios
         if (!usersCollection) return false;
         const uData = await usersCollection.findOne({ jid: target }) || {};
         
         let usuarioTxt = `👤 *PERFIL DE USUARIO* 👤\n` +
             `────────────────────────\n` +
-            `📌 *Usuario:* @${target.split('@')[0]}\n` +
+            `📌 *Usuario:* @${targetClean}\n` +
             `🎂 *Edad:* ${uData.edad || 'No especificada'}\n` +
             `⚧️ *Género:* ${uData.genero || 'No especificado'}\n` +
             `💬 *Frase:* "${uData.frase || 'Sin frase'}"\n` +
@@ -49,7 +53,6 @@ async function handleCommand(ctx) {
 
         let pfpUrl = null;
         try {
-            // Intenta obtener la foto de perfil actual de WhatsApp del usuario
             pfpUrl = await sock.profilePictureUrl(target, 'image').catch(() => null);
         } catch (err) {
             pfpUrl = null;
