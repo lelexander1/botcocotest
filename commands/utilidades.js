@@ -264,17 +264,24 @@ async function handleCommand(ctx) {
             const tts = new gtts(textoVoz, 'es');
             const tempFilePath = path.join(os.tmpdir(), `voice_${Date.now()}.mp3`);
 
-            tts.save(tempFilePath, async function () {
-                try {
-                    const audioBuffer = fs.readFileSync(tempFilePath);
-                    await sock.sendMessage(from, { audio: audioBuffer, mimetype: 'audio/mpeg', ptt: false }, { quoted: m });
-                    fs.unlinkSync(tempFilePath);
-                } catch (err) {
-                    await sock.sendMessage(from, { text: '❌ No se pudo enviar el audio.' }, { quoted: m });
-                }
+            // Usamos una promesa para asegurar que termine bien o capture el error exacto
+            await new Promise((resolve, reject) => {
+                tts.save(tempFilePath, async (err) => {
+                    if (err) return reject(err);
+                    try {
+                        const audioBuffer = fs.readFileSync(tempFilePath);
+                        await sock.sendMessage(from, { audio: audioBuffer, mimetype: 'audio/mpeg', ptt: false }, { quoted: m });
+                        fs.unlinkSync(tempFilePath);
+                        resolve();
+                    } catch (readErr) {
+                        reject(readErr);
+                    }
+                });
             });
+
         } catch (err) {
-            await sock.sendMessage(from, { text: '❌ Ocurrió un error al procesar el audio.' }, { quoted: m });
+            console.error("❌ ERROR DETALLADO EN #VOZ:", err);
+            await sock.sendMessage(from, { text: `❌ Ocurrió un error al procesar el audio: ${err.message || err}` }, { quoted: m });
         }
         return true;
     }
